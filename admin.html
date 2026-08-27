@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>施設間バイト募集 - 管理者</title>
+  <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.css" rel="stylesheet">
+  <?!= include('admin.css'); ?>
+</head>
+<body>
+  <header class="app-header">
+    <div class="header-left">
+      <h1>施設間バイト募集</h1>
+      <span class="header-badge">管理者</span>
+    </div>
+    <div class="facility-tabs" id="facilityTabs"></div>
+  </header>
+
+  <main class="app-main">
+    <section class="calendar-toolbar">
+      <div class="toolbar-info">
+        <span id="currentFacilityLabel">京町台</span> の募集カレンダー
+      </div>
+      <button type="button" class="btn btn-secondary" id="btnShowApplications">応募一覧</button>
+    </section>
+    <div id="calendar"></div>
+  </main>
+
+  <!-- 募集作成モーダル -->
+  <div class="modal-overlay" id="createModal" hidden>
+    <div class="modal">
+      <div class="modal-header">
+        <h2>募集枠を作成</h2>
+        <button type="button" class="modal-close" data-close="createModal">&times;</button>
+      </div>
+      <form id="createForm">
+        <div class="form-group">
+          <label for="createWorkDate">勤務日</label>
+          <input type="date" id="createWorkDate" name="workDate" required>
+        </div>
+        <div class="form-group">
+          <label for="createShiftType">勤務区分</label>
+          <select id="createShiftType" name="shiftType" required></select>
+        </div>
+        <div class="form-group">
+          <label for="createJobCondition">職種条件</label>
+          <select id="createJobCondition" name="jobCondition" required></select>
+        </div>
+        <p class="form-note">募集先施設：<strong id="createTargetFacility">京町台</strong></p>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" data-close="createModal">キャンセル</button>
+          <button type="submit" class="btn btn-primary">作成</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 募集詳細・応募管理モーダル -->
+  <div class="modal-overlay" id="detailModal" hidden>
+    <div class="modal modal-wide">
+      <div class="modal-header">
+        <h2>募集詳細・応募管理</h2>
+        <button type="button" class="modal-close" data-close="detailModal">&times;</button>
+      </div>
+      <div id="slotDetailInfo" class="slot-detail-info"></div>
+      <div class="applications-section">
+        <h3>応募者一覧</h3>
+        <div id="applicationsList" class="applications-list"></div>
+      </div>
+      <div class="slot-delete-section">
+        <p class="slot-delete-error" id="slotDeleteError" hidden></p>
+        <button type="button" class="btn btn-danger-outline" id="btnDeleteSlot">この募集を削除</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 応募一覧モーダル -->
+  <div class="modal-overlay" id="allApplicationsModal" hidden>
+    <div class="modal modal-wide">
+      <div class="modal-header">
+        <h2>応募一覧（全施設）</h2>
+        <button type="button" class="modal-close" data-close="allApplicationsModal">&times;</button>
+      </div>
+      <div id="allApplicationsList" class="applications-list"></div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" hidden></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/locales/ja.global.min.js"></script>
+  <?!= include('admin.js'); ?>
+</body>
+</html>

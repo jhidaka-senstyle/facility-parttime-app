@@ -1,0 +1,227 @@
+<script>
+(function () {
+  var facilityCode = '';
+  var initData = null;
+  var slotsData = [];
+
+  document.addEventListener('DOMContentLoaded', function () {
+    facilityCode = typeof STAFF_FACILITY_CODE !== 'undefined' ? STAFF_FACILITY_CODE : '';
+
+    document.getElementById('closeApplyModal').addEventListener('click', closeApplyModal);
+    document.getElementById('applyForm').addEventListener('submit', onApplySubmit);
+    document.getElementById('btnSuccessClose').addEventListener('click', onSuccessClose);
+    document.getElementById('applyModal').addEventListener('click', function (e) {
+      if (e.target.id === 'applyModal') closeApplyModal();
+    });
+
+    if (!facilityCode) {
+      showError('所属施設が指定されていません。QRコードからアクセスしてください。');
+      return;
+    }
+
+    google.script.run
+      .withSuccessHandler(onInitSuccess)
+      .withFailureHandler(function (err) {
+        showError(err.message || '初期化に失敗しました');
+      })
+      .apiGetStaffInitData(facilityCode);
+  });
+
+  function onInitSuccess(result) {
+    if (!result.success) {
+      showError(result.message);
+      return;
+    }
+    initData = result.data;
+    document.getElementById('facilityName').textContent = initData.facilityName;
+    populateJobTypes();
+    loadSlots();
+  }
+
+  function populateJobTypes() {
+    var select = document.getElementById('applyJobType');
+    select.innerHTML = '<option value="">選択してください</option>';
+    initData.jobTypes.forEach(function (jt) {
+      var opt = document.createElement('option');
+      opt.value = jt.code;
+      opt.textContent = jt.label;
+      select.appendChild(opt);
+    });
+  }
+
+  function loadSlots() {
+    document.getElementById('loading').hidden = false;
+    document.getElementById('slotsContainer').hidden = true;
+    document.getElementById('emptyView').hidden = true;
+
+    google.script.run
+      .withSuccessHandler(function (result) {
+        document.getElementById('loading').hidden = true;
+        if (!result.success) {
+          showError(result.message);
+          return;
+        }
+        slotsData = result.data.slots;
+        renderSlots();
+      })
+      .withFailureHandler(function (err) {
+        document.getElementById('loading').hidden = true;
+        showError(err.message || '募集の取得に失敗しました');
+      })
+      .apiGetStaffSlots(facilityCode);
+  }
+
+  function renderSlots() {
+    var container = document.getElementById('slotsContainer');
+    if (!slotsData.length) {
+      container.hidden = true;
+      document.getElementById('emptyView').hidden = false;
+      return;
+    }
+
+    var grouped = {};
+    slotsData.forEach(function (slot) {
+      if (!grouped[slot.workDateKey]) {
+        grouped[slot.workDateKey] = { label: slot.workDate, slots: [] };
+      }
+      grouped[slot.workDateKey].slots.push(slot);
+    });
+
+    var html = '';
+    Object.keys(grouped).sort().forEach(function (key) {
+      var group = grouped[key];
+      var shiftTotals = {};
+      group.slots.forEach(function (slot) {
+        shiftTotals[slot.shiftType] = (shiftTotals[slot.shiftType] || 0) + 1;
+      });
+      var shiftIndexes = {};
+
+      html += '<div class="date-group">';
+      html += '<div class="date-heading">' + escapeHtml(group.label) + '</div>';
+      group.slots.forEach(function (slot) {
+        shiftIndexes[slot.shiftType] = (shiftIndexes[slot.shiftType] || 0) + 1;
+        html += renderSlotCard(slot, {
+          index: shiftIndexes[slot.shiftType],
+          total: shiftTotals[slot.shiftType]
+        });
+      });
+      html += '</div>';
+    });
+
+    container.innerHTML = html;
+    container.hidden = false;
+    document.getElementById('emptyView').hidden = true;
+
+    container.querySelectorAll('[data-slot-id]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        openApplyModal(btn.dataset.slotId);
+      });
+    });
+  }
+
+  function renderSlotCard(slot, positionInfo) {
+    var multiHint = '';
+    if (positionInfo && positionInfo.total > 1) {
+      multiHint = '<p class="slot-multi-hint">' + escapeHtml(slot.shiftDisplay) +
+        ' 空き枠 ' + positionInfo.index + ' / ' + positionInfo.total + '</p>';
+    }
+
+    return (
+      '<div class="slot-card">' +
+      '<div class="slot-card-top">' +
+      '<span class="shift-badge">' + escapeHtml(slot.shiftDisplay) + '</span>' +
+      '<span class="remaining-badge">募集中</span>' +
+      '</div>' +
+      multiHint +
+      '<div class="slot-card-body">' +
+      '<p><strong>勤務先：</strong>' + escapeHtml(slot.workFacility) + '</p>' +
+      '<p><strong>職種条件：</strong>' + escapeHtml(slot.jobCondition) + '</p>' +
+      '</div>' +
+      '<button type="button" class="btn btn-primary" data-slot-id="' + slot.slotId + '">この枠に応募する</button>' +
+      '</div>'
+    );
+  }
+
+  function openApplyModal(slotId) {
+    var slot = slotsData.find(function (s) {
+      return s.slotId === slotId;
+    });
+    if (!slot) return;
+
+    document.getElementById('applySlotId').value = slotId;
+    document.getElementById('applySlotSummary').innerHTML =
+      '<p><strong>勤務日：</strong>' + escapeHtml(slot.workDate) + '</p>' +
+      '<p><strong>勤務先：</strong>' + escapeHtml(slot.workFacility) + '</p>' +
+      '<p><strong>勤務区分：</strong>' + escapeHtml(slot.shiftDisplay) + '</p>' +
+      '<p><strong>職種条件：</strong>' + escapeHtml(slot.jobCondition) + '</p>';
+
+    document.getElementById('applyName').value = '';
+    document.getElementById('applyJobType').value = '';
+    document.getElementById('applyModal').hidden = false;
+  }
+
+  function closeApplyModal() {
+    document.getElementById('applyModal').hidden = true;
+  }
+
+  function onApplySubmit(e) {
+    e.preventDefault();
+    var slotId = document.getElementById('applySlotId').value;
+    var name = document.getElementById('applyName').value.trim();
+    var jobType = document.getElementById('applyJobType').value;
+
+    if (!name) {
+      alert('氏名を入力してください');
+      return;
+    }
+    if (!jobType) {
+      alert('職種を選択してください');
+      return;
+    }
+
+    var submitBtn = e.target.querySelector('[type="submit"]');
+    submitBtn.disabled = true;
+    submitBtn.textContent = '送信中...';
+
+    google.script.run
+      .withSuccessHandler(function (result) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = '応募する';
+        if (result.success) {
+          closeApplyModal();
+          document.getElementById('successMessage').textContent = result.data.message;
+          document.getElementById('successModal').hidden = false;
+        } else {
+          alert(result.message);
+        }
+      })
+      .withFailureHandler(function (err) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = '応募する';
+        alert(err.message || '応募に失敗しました');
+      })
+      .apiSubmitApplication(facilityCode, slotId, name, jobType);
+  }
+
+  function onSuccessClose() {
+    document.getElementById('successModal').hidden = true;
+    loadSlots();
+  }
+
+  function showError(message) {
+    document.getElementById('loading').hidden = true;
+    var el = document.getElementById('errorView');
+    el.textContent = message;
+    el.hidden = false;
+  }
+
+  function escapeHtml(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+})();
+</script>

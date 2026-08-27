@@ -1,0 +1,405 @@
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', 'Hiragino Sans', 'Meiryo', sans-serif;
+    background: #f8f9fa;
+    color: #202124;
+    line-height: 1.5;
+  }
+
+  .app-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 16px 24px;
+    background: #fff;
+    border-bottom: 1px solid #dadce0;
+  }
+
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .app-header h1 {
+    font-size: 20px;
+    font-weight: 500;
+  }
+
+  .header-badge {
+    font-size: 12px;
+    background: #e8f0fe;
+    color: #1a73e8;
+    padding: 2px 8px;
+    border-radius: 4px;
+  }
+
+  .facility-tabs {
+    display: flex;
+    gap: 8px;
+  }
+
+  .facility-tab {
+    padding: 8px 20px;
+    border: 1px solid #dadce0;
+    background: #fff;
+    border-radius: 20px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.15s;
+  }
+
+  .facility-tab:hover {
+    background: #f1f3f4;
+  }
+
+  .facility-tab.active {
+    background: #1a73e8;
+    color: #fff;
+    border-color: #1a73e8;
+  }
+
+  .app-main {
+    padding: 16px 24px 32px;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+
+  .calendar-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+  }
+
+  .toolbar-info {
+    font-size: 16px;
+    color: #5f6368;
+  }
+
+  #calendar {
+    background: #fff;
+    border-radius: 8px;
+    padding: 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+
+  .fc {
+    font-size: 13px;
+  }
+
+  .fc-event {
+    cursor: pointer;
+    font-size: 11px;
+    padding: 1px 2px;
+    border-width: 1px;
+    border-style: solid;
+  }
+
+  /* FullCalendar標準CSSが白文字を強制するため、状態ごとに上書き */
+  .fc-daygrid-block-event .fc-event-main,
+  .fc-timegrid-event .fc-event-main,
+  .fc-slot-event-text {
+    color: inherit;
+  }
+
+  .fc-slot-available .fc-event-main,
+  .fc-slot-available .fc-slot-event-text,
+  .fc-event.fc-slot-available {
+    color: #1557b0 !important;
+  }
+
+  .fc-slot-tentative .fc-event-main,
+  .fc-slot-tentative .fc-slot-event-text,
+  .fc-event.fc-slot-tentative {
+    color: #b06000 !important;
+  }
+
+  .fc-slot-approved .fc-event-main,
+  .fc-slot-approved .fc-slot-event-text,
+  .fc-event.fc-slot-approved,
+  .fc-event[data-display-state="approved"] .fc-event-main,
+  .fc-event[data-display-state="approved"] .fc-slot-event-text {
+    color: #1b5e20 !important;
+  }
+
+  .fc-slot-inactive .fc-event-main,
+  .fc-slot-inactive .fc-slot-event-text,
+  .fc-event.fc-slot-inactive {
+    color: #5f6368 !important;
+  }
+
+  .fc-event.fc-slot-approved {
+    background-color: #dff3e4 !important;
+    border-color: #4caf50 !important;
+  }
+
+  .fc-event-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .fc-timegrid-event .fc-event-title,
+  .fc-timegrid-event .fc-event-main {
+    white-space: normal;
+    line-height: 1.3;
+  }
+
+  .fc-daygrid-block-event .fc-event-main {
+    padding: 1px 3px;
+  }
+
+  .fc-daygrid-day:hover {
+    background: #f8f9fa;
+    cursor: pointer;
+  }
+
+  .btn {
+    padding: 8px 16px;
+    border-radius: 4px;
+    border: none;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+
+  .btn-primary {
+    background: #1a73e8;
+    color: #fff;
+  }
+
+  .btn-primary:hover { background: #1557b0; }
+
+  .btn-secondary {
+    background: #fff;
+    color: #1a73e8;
+    border: 1px solid #dadce0;
+  }
+
+  .btn-secondary:hover { background: #f1f3f4; }
+
+  .btn-success {
+    background: #34a853;
+    color: #fff;
+  }
+
+  .btn-danger {
+    background: #ea4335;
+    color: #fff;
+  }
+
+  .btn-warning {
+    background: #fbbc04;
+    color: #202124;
+  }
+
+  .btn-sm {
+    padding: 4px 10px;
+    font-size: 12px;
+    margin-right: 4px;
+  }
+
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 16px;
+  }
+
+  .modal-overlay[hidden] { display: none; }
+
+  .modal {
+    background: #fff;
+    border-radius: 8px;
+    width: 100%;
+    max-width: 480px;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.15);
+  }
+
+  .modal-wide { max-width: 720px; }
+
+  .modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid #dadce0;
+  }
+
+  .modal-header h2 {
+    font-size: 18px;
+    font-weight: 500;
+  }
+
+  .modal-close {
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: #5f6368;
+    line-height: 1;
+  }
+
+  .modal form,
+  .slot-detail-info,
+  .applications-section {
+    padding: 16px 20px;
+  }
+
+  .form-group {
+    margin-bottom: 16px;
+  }
+
+  .form-group label {
+    display: block;
+    font-size: 13px;
+    color: #5f6368;
+    margin-bottom: 4px;
+  }
+
+  .form-group input,
+  .form-group select {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #dadce0;
+    border-radius: 4px;
+    font-size: 14px;
+  }
+
+  .form-note {
+    font-size: 13px;
+    color: #5f6368;
+    margin-bottom: 16px;
+  }
+
+  .modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding-top: 8px;
+  }
+
+  .slot-detail-info {
+    background: #f8f9fa;
+    margin: 0 20px;
+    border-radius: 4px;
+    font-size: 14px;
+  }
+
+  .slot-detail-info p { margin-bottom: 4px; }
+
+  .applications-section h3 {
+    font-size: 15px;
+    margin-bottom: 12px;
+    padding-top: 8px;
+  }
+
+  .applications-list {
+    max-height: 400px;
+    overflow-y: auto;
+  }
+
+  .app-card {
+    border: 1px solid #dadce0;
+    border-radius: 6px;
+    padding: 12px;
+    margin-bottom: 8px;
+    font-size: 13px;
+  }
+
+  .app-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+
+  .status-badge {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-weight: 500;
+  }
+
+  .status-pending { background: #fef7e0; color: #e37400; }
+  .status-approved { background: #e6f4ea; color: #137333; }
+  .status-rejected { background: #fce8e6; color: #c5221f; }
+  .status-deleted { background: #f1f3f4; color: #5f6368; }
+
+  .app-card-actions {
+    margin-top: 8px;
+  }
+
+  .empty-message {
+    color: #5f6368;
+    text-align: center;
+    padding: 24px;
+  }
+
+  .slot-delete-section {
+    padding: 16px 20px 20px;
+    border-top: 1px solid #dadce0;
+    margin-top: 8px;
+  }
+
+  .slot-delete-error {
+    font-size: 13px;
+    color: #c5221f;
+    background: #fce8e6;
+    padding: 10px 12px;
+    border-radius: 4px;
+    margin-bottom: 12px;
+  }
+
+  .slot-delete-error[hidden] { display: none; }
+
+  .btn-danger-outline {
+    background: #fff;
+    color: #ea4335;
+    border: 1px solid #ea4335;
+    width: 100%;
+  }
+
+  .btn-danger-outline:hover:not(:disabled) {
+    background: #fce8e6;
+  }
+
+  .btn-danger-outline:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #323232;
+    color: #fff;
+    padding: 12px 24px;
+    border-radius: 4px;
+    font-size: 14px;
+    z-index: 2000;
+  }
+
+  .toast[hidden] { display: none; }
+  .toast.error { background: #ea4335; }
+  .toast.success { background: #34a853; }
+
+  @media (max-width: 768px) {
+    .app-header { padding: 12px 16px; }
+    .app-main { padding: 12px 16px; }
+    .facility-tab { padding: 6px 14px; font-size: 13px; }
+  }
+</style>

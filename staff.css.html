@@ -1,0 +1,242 @@
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', 'Hiragino Sans', 'Meiryo', sans-serif;
+    background: #f5f5f5;
+    color: #202124;
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+
+  .staff-header {
+    background: #1a73e8;
+    color: #fff;
+    padding: 20px 16px;
+    text-align: center;
+  }
+
+  .staff-header h1 {
+    font-size: 20px;
+    font-weight: 500;
+    margin-bottom: 8px;
+  }
+
+  .facility-label {
+    font-size: 16px;
+    opacity: 0.95;
+  }
+
+  .staff-main {
+    padding: 16px;
+    max-width: 480px;
+    margin: 0 auto;
+  }
+
+  .loading, .empty-view, .error-view {
+    text-align: center;
+    padding: 48px 16px;
+    color: #5f6368;
+    font-size: 16px;
+  }
+
+  .error-view {
+    color: #c5221f;
+    background: #fce8e6;
+    border-radius: 8px;
+    margin-top: 16px;
+  }
+
+  .date-group {
+    margin-bottom: 24px;
+  }
+
+  .date-heading {
+    font-size: 18px;
+    font-weight: 600;
+    color: #1a73e8;
+    margin-bottom: 12px;
+    padding-bottom: 4px;
+    border-bottom: 2px solid #1a73e8;
+  }
+
+  .slot-card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 12px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+  }
+
+  .slot-card-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+
+  .shift-badge {
+    background: #e8f0fe;
+    color: #1a73e8;
+    padding: 4px 12px;
+    border-radius: 16px;
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .remaining-badge {
+    background: #e6f4ea;
+    color: #137333;
+    padding: 4px 12px;
+    border-radius: 16px;
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .slot-card-body p {
+    font-size: 15px;
+    margin-bottom: 4px;
+    color: #3c4043;
+  }
+
+  .slot-multi-hint {
+    font-size: 14px;
+    color: #1a73e8;
+    font-weight: 600;
+    margin: 0 0 8px;
+  }
+
+  .btn {
+    display: inline-block;
+    padding: 14px 24px;
+    border: none;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: center;
+    transition: background 0.15s;
+  }
+
+  .btn-primary {
+    background: #1a73e8;
+    color: #fff;
+    width: 100%;
+    margin-top: 12px;
+  }
+
+  .btn-primary:hover { background: #1557b0; }
+  .btn-primary:active { background: #0d47a1; }
+
+  .btn-block { display: block; width: 100%; }
+
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    z-index: 1000;
+    padding: 0;
+  }
+
+  .modal-overlay[hidden] { display: none; }
+
+  .modal {
+    background: #fff;
+    border-radius: 16px 16px 0 0;
+    width: 100%;
+    max-width: 480px;
+    max-height: 90vh;
+    overflow-y: auto;
+    padding-bottom: env(safe-area-inset-bottom, 16px);
+  }
+
+  .modal-success {
+    border-radius: 16px;
+    margin: auto 16px;
+    padding: 32px 24px;
+    text-align: center;
+  }
+
+  .modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid #e0e0e0;
+  }
+
+  .modal-header h2 {
+    font-size: 18px;
+    font-weight: 600;
+  }
+
+  .modal-close {
+    background: none;
+    border: none;
+    font-size: 28px;
+    cursor: pointer;
+    color: #5f6368;
+    line-height: 1;
+    padding: 0 4px;
+  }
+
+  .slot-summary {
+    background: #f8f9fa;
+    padding: 16px 20px;
+    font-size: 15px;
+  }
+
+  .slot-summary p { margin-bottom: 4px; }
+
+  .form-group {
+    padding: 0 20px;
+    margin-bottom: 16px;
+  }
+
+  .form-group label {
+    display: block;
+    font-size: 14px;
+    color: #5f6368;
+    margin-bottom: 6px;
+  }
+
+  .form-group input,
+  .form-group select {
+    width: 100%;
+    padding: 14px 12px;
+    border: 1px solid #dadce0;
+    border-radius: 8px;
+    font-size: 16px;
+    -webkit-appearance: none;
+  }
+
+  #applyForm .btn-primary {
+    margin: 8px 20px 20px;
+    width: calc(100% - 40px);
+  }
+
+  .success-icon {
+    width: 64px;
+    height: 64px;
+    background: #34a853;
+    color: #fff;
+    border-radius: 50%;
+    font-size: 32px;
+    line-height: 64px;
+    margin: 0 auto 16px;
+  }
+
+  .modal-success h2 {
+    font-size: 22px;
+    margin-bottom: 12px;
+  }
+
+  .modal-success p {
+    color: #5f6368;
+    margin-bottom: 24px;
+    font-size: 15px;
+  }
+</style>
