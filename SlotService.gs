@@ -356,6 +356,7 @@ var SlotService = (function () {
     createRemainderHalfDaySlot: createRemainderHalfDaySlot,
     getSlotDetail: getSlotDetail,
     deleteSlot: deleteSlot,
-    slotToEvent: slotToEvent
+    slotToEvent: slotToEvent,
+    buildApplicationsBySlotMap: buildApplicationsBySlotMap
   };
 })();

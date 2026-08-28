@@ -2,14 +2,17 @@
  * 応募サービス
  */
 var ApplicationService = (function () {
-  function hasActiveApplication(slotId) {
-    return SheetRepository.getApplicationsBySlotId(slotId).some(function (app) {
+  function hasActiveApplication(slotId, applicationsBySlot) {
+    var apps = applicationsBySlot && applicationsBySlot[slotId]
+      ? applicationsBySlot[slotId]
+      : [];
+    return apps.some(function (app) {
       return app.status === Config.APP_STATUS.PENDING ||
         app.status === Config.APP_STATUS.APPROVED;
     });
   }
 
-  function canStaffSeeSlot(slot, staffFacilityName) {
+  function canStaffSeeSlot(slot, staffFacilityName, applicationsBySlot) {
     if (Utils.isPastDate(slot.workDate)) return false;
 
     var applicable = slot.applicableFacilities.split(',').map(function (s) {
@@ -19,7 +22,7 @@ var ApplicationService = (function () {
 
     if (slot.slotStatus === Config.SLOT_STATUS.CLOSED) return false;
 
-    if (hasActiveApplication(slot.slotId)) return false;
+    if (hasActiveApplication(slot.slotId, applicationsBySlot)) return false;
 
     var remaining = Utils.remainingCount(
       slot.requiredCount,
@@ -29,17 +32,166 @@ var ApplicationService = (function () {
     return remaining > 0;
   }
 
-  function slotToStaffCard(slot) {
+  function slotToStaffCard(slot, shiftTypeContext) {
+    var shift = shiftTypeContext || Config;
     return {
       slotId: slot.slotId,
       workDate: Utils.formatDate(slot.workDate),
       workDateKey: Utils.toDateKey(slot.workDate),
       workFacility: slot.targetFacility,
-      shiftType: Config.getShiftTypeLabel(slot.shiftType),
-      shiftDisplay: Config.getShiftTypeStaffLabel(slot.shiftType),
-      shiftCode: Config.resolveShiftCode(slot.shiftType),
-      allowsPreferredShift: Config.isFullDayShift(slot.shiftType),
+      shiftType: shift.getShiftTypeLabel(slot.shiftType),
+      shiftDisplay: shift.getShiftTypeStaffLabel(slot.shiftType),
+      shiftCode: shift.resolveShiftCode(slot.shiftType),
+      allowsPreferredShift: shift.isFullDayShift(slot.shiftType),
       jobCondition: slot.jobCondition
+    };
+  }
+
+  function sortStaffSlots(a, b, shiftTypeContext) {
+    var shift = shiftTypeContext || Config;
+    var da = Utils.parseDate(a.workDate);
+    var db = Utils.parseDate(b.workDate);
+    if (da.getTime() !== db.getTime()) {
+      return da.getTime() - db.getTime();
+    }
+    return shift.getShiftTypeLabel(a.shiftType).localeCompare(
+      shift.getShiftTypeLabel(b.shiftType), 'ja');
+  }
+
+  function buildAvailableStaffSlots(facilityName, allSlots, applicationsBySlot, shiftTypeContext, perfDetail) {
+    var filterStartedAt = Date.now();
+    var filtered = allSlots.filter(function (slot) {
+      return canStaffSeeSlot(slot, facilityName, applicationsBySlot);
+    });
+    if (perfDetail) {
+      perfDetail.filterMs = Date.now() - filterStartedAt;
+    }
+
+    var convertStartedAt = Date.now();
+    var slots = filtered
+      .sort(function (a, b) {
+        return sortStaffSlots(a, b, shiftTypeContext);
+      })
+      .map(function (slot) {
+        return slotToStaffCard(slot, shiftTypeContext);
+      });
+    if (perfDetail) {
+      perfDetail.cardConvertMs = Date.now() - convertStartedAt;
+    }
+    return slots;
+  }
+
+  function createStaffPagePerfDetail() {
+    return {
+      facilityMasterMs: 0,
+      jobMasterMs: 0,
+      shiftMasterMs: 0,
+      slotsReadMs: 0,
+      applicationsReadMs: 0,
+      mapBuildMs: 0,
+      filterMs: 0,
+      cardConvertMs: 0,
+      otherMs: 0,
+      totalMs: 0
+    };
+  }
+
+  function logStaffPagePerfDetail(perfDetail, label) {
+    Logger.log('[StaffPagePerfDetail] label=' + label);
+    Logger.log('[StaffPagePerfDetail] facilityMasterMs=' + perfDetail.facilityMasterMs);
+    Logger.log('[StaffPagePerfDetail] jobMasterMs=' + perfDetail.jobMasterMs);
+    Logger.log('[StaffPagePerfDetail] shiftMasterMs=' + perfDetail.shiftMasterMs);
+    Logger.log('[StaffPagePerfDetail] slotsReadMs=' + perfDetail.slotsReadMs);
+    Logger.log('[StaffPagePerfDetail] applicationsReadMs=' + perfDetail.applicationsReadMs);
+    Logger.log('[StaffPagePerfDetail] mapBuildMs=' + perfDetail.mapBuildMs);
+    Logger.log('[StaffPagePerfDetail] filterMs=' + perfDetail.filterMs);
+    Logger.log('[StaffPagePerfDetail] cardConvertMs=' + perfDetail.cardConvertMs);
+    Logger.log('[StaffPagePerfDetail] otherMs=' + perfDetail.otherMs);
+    Logger.log('[StaffPagePerfDetail] totalMs=' + perfDetail.totalMs);
+  }
+
+  function logStaffPagePerformance(startedAt, slotCount, applicationCount, availableSlotCount, label) {
+    var endedAt = Date.now();
+    Logger.log('[StaffPagePerf] ' + label);
+    Logger.log('[StaffPagePerf] startedAt=' + Utilities.formatDate(
+      new Date(startedAt), Session.getScriptTimeZone(), 'yyyy/MM/dd HH:mm:ss'));
+    Logger.log('[StaffPagePerf] endedAt=' + Utilities.formatDate(
+      new Date(endedAt), Session.getScriptTimeZone(), 'yyyy/MM/dd HH:mm:ss'));
+    Logger.log('[StaffPagePerf] elapsedMs=' + (endedAt - startedAt));
+    Logger.log('[StaffPagePerf] slotCount=' + slotCount);
+    Logger.log('[StaffPagePerf] applicationCount=' + applicationCount);
+    Logger.log('[StaffPagePerf] availableSlotCount=' + availableSlotCount);
+  }
+
+  function resolveStaffFacility(facilityCode, facilityMaster) {
+    var row = facilityMaster.find(function (f) {
+      return f.code === facilityCode;
+    });
+    if (!row) {
+      return null;
+    }
+    return row.name;
+  }
+
+  function loadStaffSlotData(facilityCode, preloaded) {
+    preloaded = preloaded || {};
+    var perfDetail = preloaded.perfDetail || createStaffPagePerfDetail();
+    var loadStartedAt = Date.now();
+    var stepStartedAt;
+
+    stepStartedAt = Date.now();
+    var facilityMaster = preloaded.facilityMaster;
+    if (!facilityMaster) {
+      facilityMaster = SheetRepository.getFacilityMaster();
+      perfDetail.facilityMasterMs += Date.now() - stepStartedAt;
+    }
+
+    stepStartedAt = Date.now();
+    var facilityName = resolveStaffFacility(facilityCode, facilityMaster);
+    if (!facilityName) {
+      perfDetail.totalMs = Date.now() - loadStartedAt;
+      return {
+        error: '指定された所属施設が見つかりません。',
+        perfDetail: perfDetail
+      };
+    }
+    perfDetail.otherMs += Date.now() - stepStartedAt;
+
+    stepStartedAt = Date.now();
+    var shiftTypes = preloaded.shiftTypes;
+    if (!shiftTypes) {
+      shiftTypes = SheetRepository.getShiftTypes();
+      perfDetail.shiftMasterMs += Date.now() - stepStartedAt;
+    }
+
+    stepStartedAt = Date.now();
+    var shiftTypeContext = Config.createShiftTypeContext(shiftTypes);
+    perfDetail.otherMs += Date.now() - stepStartedAt;
+
+    stepStartedAt = Date.now();
+    var applications = SheetRepository.getAllApplications();
+    perfDetail.applicationsReadMs += Date.now() - stepStartedAt;
+
+    stepStartedAt = Date.now();
+    var applicationsBySlot = SlotService.buildApplicationsBySlotMap(applications);
+    perfDetail.mapBuildMs += Date.now() - stepStartedAt;
+
+    stepStartedAt = Date.now();
+    var allSlots = SheetRepository.getAllSlots();
+    perfDetail.slotsReadMs += Date.now() - stepStartedAt;
+
+    var slots = buildAvailableStaffSlots(
+      facilityName, allSlots, applicationsBySlot, shiftTypeContext, perfDetail);
+
+    perfDetail.totalMs = Date.now() - loadStartedAt;
+
+    return {
+      facilityCode: facilityCode,
+      facilityName: facilityName,
+      applications: applications,
+      allSlots: allSlots,
+      slots: slots,
+      perfDetail: perfDetail
     };
   }
 
@@ -131,32 +283,91 @@ var ApplicationService = (function () {
     };
   }
 
-  function getAvailableSlotsForStaff(facilityCode) {
-    var facilityName = Config.getFacilityName(facilityCode);
-    if (!facilityName || facilityName === facilityCode) {
-      return Utils.failure('所属施設が正しく指定されていません。');
+  function getStaffPageData(facilityCode) {
+    var startedAt = Date.now();
+    var perfDetail = createStaffPagePerfDetail();
+    try {
+      var stepStartedAt = Date.now();
+      var facilityMaster = SheetRepository.getFacilityMaster();
+      perfDetail.facilityMasterMs += Date.now() - stepStartedAt;
+
+      stepStartedAt = Date.now();
+      var jobTypes = SheetRepository.getJobTypeMaster();
+      perfDetail.jobMasterMs += Date.now() - stepStartedAt;
+
+      var loaded = loadStaffSlotData(facilityCode, {
+        facilityMaster: facilityMaster,
+        perfDetail: perfDetail
+      });
+      if (loaded.error) {
+        perfDetail.totalMs = Date.now() - startedAt;
+        logStaffPagePerfDetail(perfDetail, 'getStaffPageData');
+        return Utils.failure(loaded.error);
+      }
+
+      stepStartedAt = Date.now();
+      var response = Utils.success({
+        facilityCode: loaded.facilityCode,
+        facilityName: loaded.facilityName,
+        jobTypes: jobTypes,
+        preferredShiftOptions: Config.getPreferredShiftOptionsForStaff(),
+        slots: loaded.slots
+      });
+      perfDetail.otherMs += Date.now() - stepStartedAt;
+      perfDetail.totalMs = Date.now() - startedAt;
+
+      logStaffPagePerformance(
+        startedAt,
+        loaded.allSlots.length,
+        loaded.applications.length,
+        loaded.slots.length,
+        'getStaffPageData'
+      );
+      logStaffPagePerfDetail(perfDetail, 'getStaffPageData');
+
+      return response;
+    } catch (e) {
+      perfDetail.totalMs = Date.now() - startedAt;
+      logStaffPagePerfDetail(perfDetail, 'getStaffPageData');
+      return Utils.failure('スタッフページデータの取得中にエラーが発生しました: ' + e.message);
     }
+  }
 
-    var slots = SheetRepository.getAllSlots()
-      .filter(function (slot) {
-        return canStaffSeeSlot(slot, facilityName);
-      })
-      .sort(function (a, b) {
-        var da = Utils.parseDate(a.workDate);
-        var db = Utils.parseDate(b.workDate);
-        if (da.getTime() !== db.getTime()) {
-          return da.getTime() - db.getTime();
+  function getAvailableSlotsForStaff(facilityCode) {
+    var startedAt = Date.now();
+    var perfDetail = createStaffPagePerfDetail();
+    try {
+      var loaded = loadStaffSlotData(facilityCode, { perfDetail: perfDetail });
+      if (loaded.error) {
+        perfDetail.totalMs = Date.now() - startedAt;
+        logStaffPagePerfDetail(perfDetail, 'getAvailableSlotsForStaff');
+        if (loaded.error === '指定された所属施設が見つかりません。') {
+          return Utils.failure('所属施設が正しく指定されていません。');
         }
-        return Config.getShiftTypeLabel(a.shiftType).localeCompare(
-          Config.getShiftTypeLabel(b.shiftType), 'ja');
-      })
-      .map(slotToStaffCard);
+        return Utils.failure(loaded.error);
+      }
 
-    return Utils.success({
-      facilityCode: facilityCode,
-      facilityName: facilityName,
-      slots: slots
-    });
+      perfDetail.totalMs = Date.now() - startedAt;
+
+      logStaffPagePerformance(
+        startedAt,
+        loaded.allSlots.length,
+        loaded.applications.length,
+        loaded.slots.length,
+        'getAvailableSlotsForStaff'
+      );
+      logStaffPagePerfDetail(perfDetail, 'getAvailableSlotsForStaff');
+
+      return Utils.success({
+        facilityCode: loaded.facilityCode,
+        facilityName: loaded.facilityName,
+        slots: loaded.slots
+      });
+    } catch (e) {
+      perfDetail.totalMs = Date.now() - startedAt;
+      logStaffPagePerfDetail(perfDetail, 'getAvailableSlotsForStaff');
+      return Utils.failure('募集の取得中にエラーが発生しました: ' + e.message);
+    }
   }
 
   function hasDuplicateApplication(homeFacility, name, workDate) {
@@ -531,6 +742,7 @@ var ApplicationService = (function () {
   }
 
   return {
+    getStaffPageData: getStaffPageData,
     getAvailableSlotsForStaff: getAvailableSlotsForStaff,
     submitApplication: submitApplication,
     approveApplication: approveApplication,

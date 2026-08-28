@@ -70,6 +70,115 @@ var Config = (function () {
 
   var DEFAULT_ADMIN_FACILITY = 'KYOMACHIDAI';
 
+  /** 施設マスタ（固定値） */
+  var FACILITY_MASTER = [
+    {
+      code: 'NAGAMINE',
+      name: '長嶺',
+      applicableNames: '京町台,花園',
+      active: true
+    },
+    {
+      code: 'KYOMACHIDAI',
+      name: '京町台',
+      applicableNames: '長嶺',
+      active: true
+    },
+    {
+      code: 'HANAZONO',
+      name: '花園',
+      applicableNames: '長嶺',
+      active: true
+    }
+  ];
+
+  /** 職種マスタ（固定値） */
+  var JOB_TYPE_MASTER = [
+    { code: 'NURSE', label: '看護師', active: true },
+    { code: 'CAREGIVER', label: '介護士', active: true },
+    { code: 'PT', label: '理学療法士', active: true },
+    { code: 'OT', label: '作業療法士', active: true },
+    { code: 'ST', label: '言語聴覚士', active: true },
+    { code: 'OTHER', label: 'その他', active: true }
+  ];
+
+  /** 勤務区分マスタ（固定値） */
+  var SHIFT_TYPE_MASTER = [
+    {
+      code: 'FULLDAY',
+      label: '終日勤務',
+      start: '8:30',
+      end: '17:30',
+      order: 1,
+      active: true
+    },
+    {
+      code: 'AM',
+      label: '午前のみ',
+      start: '8:30',
+      end: '12:30',
+      order: 2,
+      active: true
+    },
+    {
+      code: 'PM',
+      label: '午後のみ',
+      start: '13:30',
+      end: '17:30',
+      order: 3,
+      active: true
+    }
+  ];
+
+  function cloneFacilityMasterRow(row) {
+    return {
+      code: row.code,
+      name: row.name,
+      applicableNames: row.applicableNames,
+      active: row.active
+    };
+  }
+
+  function cloneJobTypeMasterRow(row) {
+    return {
+      code: row.code,
+      label: row.label,
+      active: row.active
+    };
+  }
+
+  function cloneShiftTypeMasterRow(row) {
+    return {
+      code: row.code,
+      label: row.label,
+      start: row.start,
+      end: row.end,
+      order: row.order,
+      active: row.active
+    };
+  }
+
+  /** @returns {Array<{code:string,name:string,applicableNames:string,active:boolean}>} */
+  function getFacilityMaster() {
+    return FACILITY_MASTER.filter(function (row) {
+      return row.active !== false;
+    }).map(cloneFacilityMasterRow);
+  }
+
+  /** @returns {Array<{code:string,label:string,active:boolean}>} */
+  function getJobTypeMaster() {
+    return JOB_TYPE_MASTER.filter(function (row) {
+      return row.active !== false;
+    }).map(cloneJobTypeMasterRow);
+  }
+
+  /** @returns {Array<{code:string,label:string,start:string,end:string,order:number,active:boolean}>} */
+  function getShiftTypes() {
+    return SHIFT_TYPE_MASTER.filter(function (row) {
+      return row.active !== false;
+    }).map(cloneShiftTypeMasterRow);
+  }
+
   var CHAT_WEBHOOK_KEY = 'CHAT_WEBHOOK_URL';
 
   /** 管理者画面URL */
@@ -78,7 +187,7 @@ var Config = (function () {
 
   /** 応募可能施設の表示名リストを取得 */
   function getApplicableFacilityNames(recruitingFacilityCode) {
-    var master = SheetRepository.getFacilityMaster();
+    var master = getFacilityMaster();
     var row = master.find(function (f) {
       return f.code === recruitingFacilityCode;
     });
@@ -92,7 +201,7 @@ var Config = (function () {
 
   /** 施設コードから施設名 */
   function getFacilityName(code) {
-    var master = SheetRepository.getFacilityMaster();
+    var master = getFacilityMaster();
     var row = master.find(function (f) {
       return f.code === code;
     });
@@ -101,7 +210,7 @@ var Config = (function () {
 
   /** 施設名から施設コード */
   function getFacilityCode(name) {
-    var master = SheetRepository.getFacilityMaster();
+    var master = getFacilityMaster();
     var row = master.find(function (f) {
       return f.name === name;
     });
@@ -110,7 +219,7 @@ var Config = (function () {
 
   /** 職種IDから日本語表示名 */
   function getJobTypeLabel(codeOrLabel) {
-    var master = SheetRepository.getJobTypeMaster();
+    var master = getJobTypeMaster();
     var byCode = master.find(function (j) {
       return j.code === codeOrLabel;
     });
@@ -128,7 +237,7 @@ var Config = (function () {
 
   /** 職種IDがマスタに存在するか */
   function isValidJobTypeCode(code) {
-    return SheetRepository.getJobTypeMaster().some(function (j) {
+    return getJobTypeMaster().some(function (j) {
       return j.code === code;
     });
   }
@@ -138,7 +247,7 @@ var Config = (function () {
     var value = String(codeOrLabel || '').trim();
     if (!value) return '';
 
-    var master = SheetRepository.getShiftTypes();
+    var master = getShiftTypes();
     var byCode = master.find(function (s) {
       return s.code === value;
     });
@@ -171,7 +280,7 @@ var Config = (function () {
       return LEGACY_SHIFT_LABEL_BY_CODE[code];
     }
 
-    var master = SheetRepository.getShiftTypes();
+    var master = getShiftTypes();
     var row = master.find(function (s) {
       return s.code === value || s.label === value;
     });
@@ -191,7 +300,7 @@ var Config = (function () {
 
   /** 新規作成で選択可能な勤務区分（マスタから取得） */
   function getActiveShiftTypesForCreate() {
-    return SheetRepository.getShiftTypes().filter(function (s) {
+    return getShiftTypes().filter(function (s) {
       return ACTIVE_SHIFT_CODES.indexOf(s.code) !== -1;
     });
   }
@@ -241,6 +350,73 @@ var Config = (function () {
     return '';
   }
 
+  /**
+   * 事前取得した勤務区分マスタで変換するコンテキスト（1リクエスト内再利用用）
+   */
+  function createShiftTypeContext(shiftTypesMaster) {
+    var master = shiftTypesMaster || [];
+
+    function resolveWithMaster(codeOrLabel) {
+      var value = String(codeOrLabel || '').trim();
+      if (!value) return '';
+
+      var byCode = master.find(function (s) {
+        return s.code === value;
+      });
+      if (byCode) return byCode.code;
+
+      var byLabel = master.find(function (s) {
+        return s.label === value;
+      });
+      if (byLabel) return byLabel.code;
+
+      if (LEGACY_LABEL_TO_CODE[value]) {
+        return LEGACY_LABEL_TO_CODE[value];
+      }
+      if (LEGACY_SHIFT_LABEL_BY_CODE[value]) {
+        return value;
+      }
+      return value;
+    }
+
+    function getLabelWithMaster(codeOrLabel) {
+      var value = String(codeOrLabel || '').trim();
+      if (!value) return '';
+
+      var code = resolveWithMaster(value);
+      if (SHIFT_LABEL_BY_CODE[code]) {
+        return SHIFT_LABEL_BY_CODE[code];
+      }
+      if (LEGACY_SHIFT_LABEL_BY_CODE[code]) {
+        return LEGACY_SHIFT_LABEL_BY_CODE[code];
+      }
+
+      var row = master.find(function (s) {
+        return s.code === value || s.label === value;
+      });
+      return row ? row.label : value;
+    }
+
+    function getStaffLabelWithMaster(codeOrLabel) {
+      var label = getLabelWithMaster(codeOrLabel);
+      var code = resolveWithMaster(codeOrLabel);
+      var time = SHIFT_TIME_BY_CODE[code];
+      if (time) {
+        return label + '（' + time + '）';
+      }
+      return label;
+    }
+
+    return {
+      resolveShiftCode: resolveWithMaster,
+      getShiftTypeLabel: getLabelWithMaster,
+      getShiftTypeStaffLabel: getStaffLabelWithMaster,
+      isFullDayShift: function (shiftType) {
+        return resolveWithMaster(shiftType) === 'FULLDAY';
+      }
+    };
+  }
+
   return {
     SHEETS: SHEETS,
     APP_STATUS: APP_STATUS,
@@ -264,6 +440,10 @@ var Config = (function () {
     getEffectivePreferredShiftCode: getEffectivePreferredShiftCode,
     isFullDayShift: isFullDayShift,
     getPreferredShiftOptionsForStaff: getPreferredShiftOptionsForStaff,
-    getPreferredShiftCalendarSuffix: getPreferredShiftCalendarSuffix
+    getPreferredShiftCalendarSuffix: getPreferredShiftCalendarSuffix,
+    createShiftTypeContext: createShiftTypeContext,
+    getFacilityMaster: getFacilityMaster,
+    getJobTypeMaster: getJobTypeMaster,
+    getShiftTypes: getShiftTypes
   };
 })();

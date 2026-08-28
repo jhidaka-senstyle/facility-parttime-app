@@ -43,27 +43,12 @@ var SheetRepository = (function () {
 
   /** @returns {Array<{code:string,name:string,applicableNames:string}>} */
   function getFacilityMaster() {
-    return getDataRows(Config.SHEETS.FACILITIES).map(function (row) {
-      return {
-        code: String(row[0] || '').trim(),
-        name: String(row[1] || '').trim(),
-        applicableNames: String(row[2] || '').trim()
-      };
-    }).filter(function (f) {
-      return f.code && f.name;
-    });
+    return Config.getFacilityMaster();
   }
 
   /** @returns {Array<{code:string,label:string}>} */
   function getJobTypeMaster() {
-    return getDataRows(Config.SHEETS.JOB_TYPES).map(function (row) {
-      return {
-        code: String(row[0] || '').trim(),
-        label: String(row[1] || '').trim()
-      };
-    }).filter(function (j) {
-      return j.code && j.label;
-    });
+    return Config.getJobTypeMaster();
   }
 
   /** @deprecated 互換用。getJobTypeMaster を使用 */
@@ -73,14 +58,7 @@ var SheetRepository = (function () {
 
   /** @returns {Array<{code:string,label:string}>} */
   function getShiftTypes() {
-    return getDataRows(Config.SHEETS.SHIFT_TYPES).map(function (row) {
-      return {
-        code: String(row[0] || '').trim(),
-        label: String(row[1] || '').trim()
-      };
-    }).filter(function (s) {
-      return s.code && s.label;
-    });
+    return Config.getShiftTypes();
   }
 
   function rowToSlot(row) {

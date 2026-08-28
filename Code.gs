@@ -125,6 +125,14 @@ function apiDeleteApplication(applicationId, deleterName) {
 
 /** --- スタッフ API --- */
 
+function apiGetStaffPageData(facilityCode) {
+  try {
+    return ApplicationService.getStaffPageData(facilityCode);
+  } catch (err) {
+    return Utils.failure(err.message);
+  }
+}
+
 function apiGetStaffInitData(facilityCode) {
   try {
     var facilityName = Config.getFacilityName(facilityCode);

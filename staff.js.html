@@ -26,14 +26,14 @@
     }
 
     google.script.run
-      .withSuccessHandler(onInitSuccess)
+      .withSuccessHandler(onPageDataSuccess)
       .withFailureHandler(function (err) {
-        showError(err.message || '初期化に失敗しました');
+        showError(err.message || '読み込みに失敗しました');
       })
-      .apiGetStaffInitData(facilityCode);
+      .apiGetStaffPageData(facilityCode);
   });
 
-  function onInitSuccess(result) {
+  function onPageDataSuccess(result) {
     if (!result.success) {
       showError(result.message);
       return;
@@ -42,7 +42,9 @@
     document.getElementById('facilityName').textContent = initData.facilityName;
     populateJobTypes();
     populatePreferredShiftOptions();
-    loadSlots();
+    slotsData = initData.slots || [];
+    document.getElementById('loading').hidden = true;
+    renderSlots();
   }
 
   function populateJobTypes() {
