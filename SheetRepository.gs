@@ -2,6 +2,8 @@
  * スプレッドシート読み書き
  */
 var SheetRepository = (function () {
+  var APPLICATION_COLUMN_COUNT = 19;
+
   function getSpreadsheet() {
     return SpreadsheetApp.getActiveSpreadsheet();
   }
@@ -175,7 +177,12 @@ var SheetRepository = (function () {
       approvedAt: row[10],
       approver: String(row[11] || '').trim(),
       deletedAt: row[12],
-      deleter: String(row[13] || '').trim()
+      deleter: String(row[13] || '').trim(),
+      preferredShiftType: String(row[14] || '').trim(),
+      remarks: String(row[15] || '').trim(),
+      email: String(row[16] || '').trim(),
+      reminderSentAt: row[17],
+      cancelledAt: row[18]
     };
   }
 
@@ -190,7 +197,7 @@ var SheetRepository = (function () {
     var lastRow = sheet.getLastRow();
     if (lastRow < 2) return null;
 
-    var range = getDataRange(sheet, 2, lastRow, 14);
+    var range = getDataRange(sheet, 2, lastRow, APPLICATION_COLUMN_COUNT);
     if (!range) return null;
 
     var data = range.getValues();
@@ -221,13 +228,18 @@ var SheetRepository = (function () {
       app.approvedAt || '',
       app.approver || '',
       app.deletedAt || '',
-      app.deleter || ''
+      app.deleter || '',
+      app.preferredShiftType || '',
+      app.remarks || '',
+      app.email || '',
+      app.reminderSentAt || '',
+      app.cancelledAt || ''
     ]);
   }
 
   function updateApplicationRow(rowIndex, app) {
     var sheet = getSheet(Config.SHEETS.APPLICATIONS);
-    getRowRange(sheet, rowIndex, 14).setValues([[
+    getRowRange(sheet, rowIndex, APPLICATION_COLUMN_COUNT).setValues([[
       app.applicationId,
       app.slotId,
       app.workDate,
@@ -241,7 +253,12 @@ var SheetRepository = (function () {
       app.approvedAt || '',
       app.approver || '',
       app.deletedAt || '',
-      app.deleter || ''
+      app.deleter || '',
+      app.preferredShiftType || '',
+      app.remarks || '',
+      app.email || '',
+      app.reminderSentAt || '',
+      app.cancelledAt || ''
     ]]);
   }
 

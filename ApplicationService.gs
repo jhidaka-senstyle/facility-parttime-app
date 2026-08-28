@@ -37,7 +37,97 @@ var ApplicationService = (function () {
       workFacility: slot.targetFacility,
       shiftType: Config.getShiftTypeLabel(slot.shiftType),
       shiftDisplay: Config.getShiftTypeStaffLabel(slot.shiftType),
+      shiftCode: Config.resolveShiftCode(slot.shiftType),
+      allowsPreferredShift: Config.isFullDayShift(slot.shiftType),
       jobCondition: slot.jobCondition
+    };
+  }
+
+  function validateAndResolvePreferredShift(slot, preferredShiftInput) {
+    var slotCode = Config.resolveShiftCode(slot.shiftType);
+    var allowedCodes = [];
+    var defaultCode = '';
+
+    if (slotCode === 'FULLDAY') {
+      allowedCodes = ['FULLDAY', 'AM', 'PM'];
+      defaultCode = 'FULLDAY';
+    } else if (slotCode === 'AM') {
+      allowedCodes = ['AM'];
+      defaultCode = 'AM';
+    } else if (slotCode === 'PM') {
+      allowedCodes = ['PM'];
+      defaultCode = 'PM';
+    } else {
+      defaultCode = slotCode || Config.resolveShiftCode(slot.shiftType);
+      allowedCodes = defaultCode ? [defaultCode] : [];
+    }
+
+    var preferredCode = String(preferredShiftInput || '').trim();
+    if (!preferredCode) {
+      preferredCode = defaultCode;
+    }
+
+    if (!preferredCode || allowedCodes.indexOf(preferredCode) === -1) {
+      return {
+        error: '希望勤務区分が正しくありません。'
+      };
+    }
+
+    return { code: preferredCode };
+  }
+
+  function normalizeRemarks(remarks) {
+    var trimmed = String(remarks || '').trim();
+    if (trimmed.length > 200) {
+      return trimmed.substring(0, 200);
+    }
+    return trimmed;
+  }
+
+  function normalizeEmail(email) {
+    return String(email || '').trim();
+  }
+
+  function isValidEmail(email) {
+    var trimmed = normalizeEmail(email);
+    if (!trimmed) return false;
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
+  }
+
+  function getConfirmedShiftCodeForApproval(app, slot, shouldSplit) {
+    var preferredCode = Config.getEffectivePreferredShiftCode(app);
+    if (shouldSplit) {
+      return preferredCode;
+    }
+    var slotCode = Config.resolveShiftCode(slot.shiftType);
+    if (slotCode === 'FULLDAY') {
+      return preferredCode;
+    }
+    return slotCode;
+  }
+
+  function formatRemarksDisplay(remarks) {
+    return remarks ? remarks : 'なし';
+  }
+
+  function mapApplicationForAdmin(app) {
+    var preferredCode = Config.getEffectivePreferredShiftCode(app);
+    return {
+      applicationId: app.applicationId,
+      slotId: app.slotId,
+      name: app.name,
+      homeFacility: app.homeFacility,
+      jobType: Config.getJobTypeLabel(app.jobType),
+      workDate: Utils.formatDate(app.workDate),
+      shiftType: Config.getShiftTypeLabel(app.shiftType),
+      shiftTypeStaffLabel: Config.getShiftTypeStaffLabel(app.shiftType),
+      preferredShiftType: preferredCode,
+      preferredShiftDisplay: Config.getShiftTypeStaffLabel(preferredCode),
+      remarks: app.remarks || '',
+      remarksDisplay: formatRemarksDisplay(app.remarks),
+      workFacility: app.workFacility,
+      status: app.status,
+      appliedAt: Utils.formatDateTime(app.appliedAt)
     };
   }
 
@@ -90,7 +180,7 @@ var ApplicationService = (function () {
     return null;
   }
 
-  function submitApplication(facilityCode, slotId, name, jobType) {
+  function submitApplication(facilityCode, slotId, name, jobType, preferredShiftType, remarks, email) {
     var lock = LockService.getScriptLock();
     var hasLock = false;
     try {
@@ -114,6 +204,14 @@ var ApplicationService = (function () {
 
       if (!Config.isValidJobTypeCode(trimmedJobTypeId)) {
         return Utils.failure('職種が正しくありません。');
+      }
+
+      var trimmedEmail = normalizeEmail(email);
+      if (!trimmedEmail) {
+        return Utils.failure('メールアドレスを入力してください。');
+      }
+      if (!isValidEmail(trimmedEmail)) {
+        return Utils.failure('メールアドレスの形式が正しくありません。');
       }
 
       var found = SheetRepository.findSlotById(slotId);
@@ -144,6 +242,11 @@ var ApplicationService = (function () {
         return Utils.failure('定員に達しているため応募できません。');
       }
 
+      var preferredResult = validateAndResolvePreferredShift(slot, preferredShiftType);
+      if (preferredResult.error) {
+        return Utils.failure(preferredResult.error);
+      }
+
       var now = Utils.now();
       var application = {
         applicationId: Utils.generateId(),
@@ -159,7 +262,12 @@ var ApplicationService = (function () {
         approvedAt: '',
         approver: '',
         deletedAt: '',
-        deleter: ''
+        deleter: '',
+        preferredShiftType: preferredResult.code,
+        remarks: normalizeRemarks(remarks),
+        email: trimmedEmail,
+        reminderSentAt: '',
+        cancelledAt: ''
       };
 
       slot.tentativeCount = Number(slot.tentativeCount) + 1;
@@ -169,6 +277,7 @@ var ApplicationService = (function () {
       SheetRepository.updateSlotRow(found.rowIndex, slot);
 
       ChatNotify.notifyNewApplication(application);
+      MailNotify.sendApplicationReceived(application);
 
       return Utils.success({
         applicationId: application.applicationId,
@@ -206,6 +315,11 @@ var ApplicationService = (function () {
       }
       var slot = slotFound.slot;
       var now = Utils.now();
+      var slotCode = Config.resolveShiftCode(slot.shiftType);
+      var preferredCode = Config.getEffectivePreferredShiftCode(app);
+      var shouldSplit = slotCode === 'FULLDAY' &&
+        (preferredCode === 'AM' || preferredCode === 'PM');
+      var confirmedShiftCode = getConfirmedShiftCodeForApproval(app, slot, shouldSplit);
 
       app.status = Config.APP_STATUS.APPROVED;
       app.approvedAt = now;
@@ -215,14 +329,88 @@ var ApplicationService = (function () {
       slot.approvedCount = Number(slot.approvedCount) + 1;
       slot.updatedAt = now;
 
+      if (shouldSplit) {
+        slot.shiftType = Config.getShiftTypeLabel(preferredCode);
+      }
+
       SheetRepository.updateApplicationRow(appFound.rowIndex, app);
       SheetRepository.updateSlotRow(slotFound.rowIndex, slot);
 
-      ChatNotify.notifyApproved(app);
+      var splitInfo = null;
+      if (shouldSplit) {
+        var remainderShiftCode = preferredCode === 'AM' ? 'PM' : 'AM';
+        SlotService.createRemainderHalfDaySlot(slot, remainderShiftCode);
+        splitInfo = {
+          confirmedShiftCode: preferredCode,
+          remainderShiftCode: remainderShiftCode
+        };
+      }
+
+      ChatNotify.notifyApproved(app, splitInfo);
+      MailNotify.sendApplicationApproved(app, confirmedShiftCode);
+
+      SpreadsheetApp.flush();
+      OfficeListService.refreshOfficeListSafe();
 
       return Utils.success({ applicationId: app.applicationId });
     } catch (e) {
       return Utils.failure('承認処理中にエラーが発生しました: ' + e.message);
+    } finally {
+      if (hasLock) {
+        lock.releaseLock();
+      }
+    }
+  }
+
+  function getConfirmedShiftCodeFromSlot(slot) {
+    return Config.resolveShiftCode(slot.shiftType);
+  }
+
+  function cancelApprovedApplication(applicationId, operatorName) {
+    var lock = LockService.getScriptLock();
+    var hasLock = false;
+    try {
+      lock.waitLock(30000);
+      hasLock = true;
+
+      var appFound = SheetRepository.findApplicationById(applicationId);
+      if (!appFound) {
+        return Utils.failure('応募が見つかりません。');
+      }
+      var app = appFound.application;
+
+      if (app.status !== Config.APP_STATUS.APPROVED) {
+        return Utils.failure('承認済みの応募のみキャンセルできます。');
+      }
+
+      var slotFound = SheetRepository.findSlotById(app.slotId);
+      if (!slotFound) {
+        return Utils.failure('募集枠が見つかりません。');
+      }
+      var slot = slotFound.slot;
+      var confirmedShiftCode = getConfirmedShiftCodeFromSlot(slot);
+      var now = Utils.now();
+
+      app.status = Config.APP_STATUS.CANCELLED;
+      app.cancelledAt = now;
+
+      slot.tentativeCount = 0;
+      slot.approvedCount = 0;
+      slot.slotStatus = Config.SLOT_STATUS.OPEN;
+      slot.updatedAt = now;
+
+      SheetRepository.updateApplicationRow(appFound.rowIndex, app);
+      SheetRepository.updateSlotRow(slotFound.rowIndex, slot);
+
+      SpreadsheetApp.flush();
+      OfficeListService.refreshOfficeListSafe();
+
+      ChatNotify.notifyCancelled(app, confirmedShiftCode);
+      MailNotify.sendApplicationCancelled(app, confirmedShiftCode);
+
+      return Utils.success({ applicationId: app.applicationId });
+    } catch (e) {
+      return Utils.failure('キャンセル処理中にエラーが発生しました: ' + e.message);
     } finally {
       if (hasLock) {
         lock.releaseLock();
@@ -264,6 +452,8 @@ var ApplicationService = (function () {
       SheetRepository.updateSlotRow(slotFound.rowIndex, slot);
 
       ChatNotify.notifyRejected(app);
+
+      OfficeListService.refreshOfficeListSafe();
 
       return Utils.success({ applicationId: app.applicationId });
     } catch (e) {
@@ -317,6 +507,8 @@ var ApplicationService = (function () {
 
       ChatNotify.notifyDeleted(app);
 
+      OfficeListService.refreshOfficeListSafe();
+
       return Utils.success({ applicationId: app.applicationId });
     } catch (e) {
       return Utils.failure('削除処理中にエラーが発生しました: ' + e.message);
@@ -334,20 +526,7 @@ var ApplicationService = (function () {
         var db = Utils.parseDate(b.appliedAt);
         return db.getTime() - da.getTime();
       })
-      .map(function (app) {
-        return {
-          applicationId: app.applicationId,
-          slotId: app.slotId,
-          name: app.name,
-          homeFacility: app.homeFacility,
-          jobType: Config.getJobTypeLabel(app.jobType),
-          workDate: Utils.formatDate(app.workDate),
-          shiftType: Config.getShiftTypeLabel(app.shiftType),
-          workFacility: app.workFacility,
-          status: app.status,
-          appliedAt: Utils.formatDateTime(app.appliedAt)
-        };
-      });
+      .map(mapApplicationForAdmin);
     return Utils.success(apps);
   }
 
@@ -355,6 +534,7 @@ var ApplicationService = (function () {
     getAvailableSlotsForStaff: getAvailableSlotsForStaff,
     submitApplication: submitApplication,
     approveApplication: approveApplication,
+    cancelApprovedApplication: cancelApprovedApplication,
     rejectApplication: rejectApplication,
     deleteApplication: deleteApplication,
     getAllApplicationsForAdmin: getAllApplicationsForAdmin

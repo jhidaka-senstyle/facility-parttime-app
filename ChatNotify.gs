@@ -68,21 +68,44 @@ var ChatNotify = (function () {
   }
 
   function notifyNewApplication(app) {
-    var text = buildMessageWithAdminLink([
+    var preferredCode = Config.getEffectivePreferredShiftCode(app);
+    var lines = [
       '【施設間バイト応募】',
       '',
       '勤務日：' + Utils.formatDate(app.workDate),
       '勤務先：' + app.workFacility,
-      '勤務区分：' + Config.getShiftTypeLabel(app.shiftType),
+      '募集：' + Config.getShiftTypeStaffLabel(app.shiftType),
+      '希望：' + Config.getShiftTypeStaffLabel(preferredCode),
       '所属施設：' + app.homeFacility,
       '氏名：' + app.name,
-      '職種：' + Config.getJobTypeLabel(app.jobType),
-      '状態：' + app.status
-    ]);
-    sendMessage(text);
+      '職種：' + Config.getJobTypeLabel(app.jobType)
+    ];
+    if (app.remarks) {
+      lines.push('備考：' + app.remarks);
+    }
+    lines.push('状態：' + app.status);
+    sendMessage(buildMessageWithAdminLink(lines));
   }
 
-  function notifyApproved(app) {
+  function notifyApproved(app, splitInfo) {
+    if (splitInfo && splitInfo.confirmedShiftCode && splitInfo.remainderShiftCode) {
+      var splitLines = [
+        '【施設間バイト承認】',
+        '',
+        '勤務日：' + Utils.formatDate(app.workDate),
+        '勤務先：' + app.workFacility,
+        '氏名：' + app.name,
+        '勤務確定：' + Config.getShiftTypeStaffLabel(splitInfo.confirmedShiftCode),
+        '',
+        '承認しました。',
+        '',
+        '残り時間：',
+        Config.getShiftTypeStaffLabel(splitInfo.remainderShiftCode) + 'の募集枠を自動作成しました。'
+      ];
+      sendMessage(buildMessageWithAdminLink(splitLines));
+      return;
+    }
+
     var text = buildMessageWithAdminLink([
       '【施設間バイト承認】',
       '',
@@ -115,12 +138,109 @@ var ChatNotify = (function () {
     sendMessage(text);
   }
 
+  function notifyCancelled(app, confirmedShiftCode) {
+    var lines = [
+      '【施設間バイト勤務キャンセル】',
+      '',
+      '勤務日：' + Utils.formatDate(app.workDate),
+      '勤務先：' + app.workFacility,
+      '氏名：' + app.name,
+      '勤務：' + Config.getShiftTypeStaffLabel(confirmedShiftCode),
+      '',
+      '承認済み勤務をキャンセルしました。',
+      '募集枠を再開しました。'
+    ];
+    sendMessage(buildMessageWithAdminLink(lines));
+  }
+
+  function formatWeeklyUnfilledSlotLine(slot) {
+    var workDate = Utils.parseDate(slot.workDate);
+    var dateLabel = workDate
+      ? Utilities.formatDate(workDate, Session.getScriptTimeZone() || 'Asia/Tokyo', 'M/d')
+      : '';
+    return dateLabel + '　' +
+      slot.targetFacility + '　' +
+      Config.getShiftTypeLabel(slot.shiftType) + '　' +
+      slot.jobCondition;
+  }
+
+  function notifyWeeklyUnfilledSlots(slots) {
+    try {
+      if (!slots || slots.length === 0) {
+        Logger.log('今後1週間の未充足枠はありません。');
+        return;
+      }
+
+      var lines = [
+        '【施設間バイト 未充足枠一覧】',
+        '',
+        '今後1週間の未充足募集です。',
+        ''
+      ];
+      slots.forEach(function (slot) {
+        lines.push(formatWeeklyUnfilledSlotLine(slot));
+      });
+      sendMessage(buildMessageWithAdminLink(lines));
+    } catch (e) {
+      Logger.log('未充足枠サマリーChat通知エラー: ' + e.message);
+      if (e.stack) {
+        Logger.log(e.stack);
+      }
+    }
+  }
+
+  function formatPendingApplicationBlock(app) {
+    var workDate = Utils.parseDate(app.workDate);
+    var dateLabel = workDate
+      ? Utilities.formatDate(workDate, Session.getScriptTimeZone() || 'Asia/Tokyo', 'M/d')
+      : '';
+    var preferredCode = Config.getEffectivePreferredShiftCode(app);
+    return [
+      dateLabel + '　' + app.workFacility + '　' + Config.getShiftTypeLabel(app.shiftType),
+      '応募者：' + app.name,
+      '所属：' + app.homeFacility,
+      '職種：' + Config.getJobTypeLabel(app.jobType),
+      '希望：' + Config.getShiftTypeLabel(preferredCode)
+    ].join('\n');
+  }
+
+  function notifyWeeklyPendingApplications(applications) {
+    try {
+      if (!applications || applications.length === 0) {
+        Logger.log('今後1週間の承認待ち応募はありません。');
+        return;
+      }
+
+      var lines = [
+        '【施設間バイト 承認待ち一覧】',
+        '',
+        '今後1週間で、管理者確認待ちの応募があります。',
+        ''
+      ];
+      applications.forEach(function (app, index) {
+        if (index > 0) {
+          lines.push('');
+        }
+        lines.push(formatPendingApplicationBlock(app));
+      });
+      sendMessage(buildMessageWithAdminLink(lines));
+    } catch (e) {
+      Logger.log('承認待ち応募サマリーChat通知エラー: ' + e.message);
+      if (e.stack) {
+        Logger.log(e.stack);
+      }
+    }
+  }
+
   return {
     notifyNewSlot: notifyNewSlot,
     notifyNewApplication: notifyNewApplication,
     notifyApproved: notifyApproved,
     notifyRejected: notifyRejected,
-    notifyDeleted: notifyDeleted
+    notifyDeleted: notifyDeleted,
+    notifyCancelled: notifyCancelled,
+    notifyWeeklyUnfilledSlots: notifyWeeklyUnfilledSlots,
+    notifyWeeklyPendingApplications: notifyWeeklyPendingApplications
   };
 })();
 

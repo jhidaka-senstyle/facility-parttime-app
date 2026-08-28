@@ -107,6 +107,14 @@ function apiRejectApplication(applicationId, approverName) {
   }
 }
 
+function apiCancelApprovedApplication(applicationId, operatorName) {
+  try {
+    return ApplicationService.cancelApprovedApplication(applicationId, operatorName);
+  } catch (err) {
+    return Utils.failure(err.message);
+  }
+}
+
 function apiDeleteApplication(applicationId, deleterName) {
   try {
     return ApplicationService.deleteApplication(applicationId, deleterName);
@@ -130,7 +138,8 @@ function apiGetStaffInitData(facilityCode) {
     return Utils.success({
       facilityCode: facilityCode,
       facilityName: facilityName,
-      jobTypes: SheetRepository.getJobTypeMaster()
+      jobTypes: SheetRepository.getJobTypeMaster(),
+      preferredShiftOptions: Config.getPreferredShiftOptionsForStaff()
     });
   } catch (err) {
     return Utils.failure(err.message);
@@ -145,9 +154,10 @@ function apiGetStaffSlots(facilityCode) {
   }
 }
 
-function apiSubmitApplication(facilityCode, slotId, name, jobType) {
+function apiSubmitApplication(facilityCode, slotId, name, jobType, preferredShiftType, remarks, email) {
   try {
-    return ApplicationService.submitApplication(facilityCode, slotId, name, jobType);
+    return ApplicationService.submitApplication(
+      facilityCode, slotId, name, jobType, preferredShiftType, remarks, email);
   } catch (err) {
     return Utils.failure(err.message);
   }

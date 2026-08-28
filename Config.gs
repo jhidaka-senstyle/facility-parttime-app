@@ -15,7 +15,8 @@ var Config = (function () {
     PENDING: '承認待ち',
     APPROVED: '承認済',
     REJECTED: '否認',
-    DELETED: '削除'
+    DELETED: '削除',
+    CANCELLED: 'キャンセル済み'
   };
 
   var SLOT_STATUS = {
@@ -202,6 +203,44 @@ var Config = (function () {
     });
   }
 
+  /** 応募の希望勤務区分ID（未設定時は勤務区分から補完） */
+  function getEffectivePreferredShiftCode(app) {
+    var preferred = String(app.preferredShiftType || '').trim();
+    if (preferred) {
+      return resolveShiftCode(preferred);
+    }
+    return resolveShiftCode(app.shiftType);
+  }
+
+  /** 終日勤務募集か */
+  function isFullDayShift(shiftType) {
+    return resolveShiftCode(shiftType) === 'FULLDAY';
+  }
+
+  /** スタッフ応募フォーム用の希望勤務区分選択肢 */
+  function getPreferredShiftOptionsForStaff() {
+    return [
+      { code: 'FULLDAY', label: '募集どおり終日勤務（8:30-17:30）' },
+      { code: 'AM', label: '午前のみ希望（8:30-12:30）' },
+      { code: 'PM', label: '午後のみ希望（13:30-17:30）' }
+    ];
+  }
+
+  /** 管理者カレンダー用：半日希望の表示 suffix */
+  function getPreferredShiftCalendarSuffix(slotShiftType, preferredShiftType) {
+    if (resolveShiftCode(slotShiftType) !== 'FULLDAY') {
+      return '';
+    }
+    var preferredCode = resolveShiftCode(preferredShiftType);
+    if (preferredCode === 'AM') {
+      return '｜午前希望';
+    }
+    if (preferredCode === 'PM') {
+      return '｜午後希望';
+    }
+    return '';
+  }
+
   return {
     SHEETS: SHEETS,
     APP_STATUS: APP_STATUS,
@@ -219,7 +258,12 @@ var Config = (function () {
     isValidJobTypeCode: isValidJobTypeCode,
     getShiftTypeLabel: getShiftTypeLabel,
     getShiftTypeStaffLabel: getShiftTypeStaffLabel,
+    resolveShiftCode: resolveShiftCode,
     getActiveShiftTypesForCreate: getActiveShiftTypesForCreate,
-    isActiveShiftLabel: isActiveShiftLabel
+    isActiveShiftLabel: isActiveShiftLabel,
+    getEffectivePreferredShiftCode: getEffectivePreferredShiftCode,
+    isFullDayShift: isFullDayShift,
+    getPreferredShiftOptionsForStaff: getPreferredShiftOptionsForStaff,
+    getPreferredShiftCalendarSuffix: getPreferredShiftCalendarSuffix
   };
 })();

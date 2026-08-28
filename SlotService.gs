@@ -49,7 +49,8 @@ var SlotService = (function () {
     if (slot.slotStatus === Config.SLOT_STATUS.CLOSED) {
       return {
         displayState: 'inactive',
-        applicantName: ''
+        applicantName: '',
+        activeApplication: null
       };
     }
 
@@ -59,7 +60,8 @@ var SlotService = (function () {
     if (pending.length > 0) {
       return {
         displayState: 'tentative',
-        applicantName: pending[0].name
+        applicantName: pending[0].name,
+        activeApplication: pending[0]
       };
     }
 
@@ -69,13 +71,15 @@ var SlotService = (function () {
     if (approved.length > 0) {
       return {
         displayState: 'approved',
-        applicantName: approved[0].name
+        applicantName: approved[0].name,
+        activeApplication: approved[0]
       };
     }
 
     return {
       displayState: 'available',
-      applicantName: ''
+      applicantName: '',
+      activeApplication: null
     };
   }
 
@@ -86,7 +90,15 @@ var SlotService = (function () {
     return title;
   }
 
-  function buildShortTitle(slot, displayState, applicantName) {
+  function appendPreferredShiftSuffix(title, slot, activeApplication, displayState) {
+    if (displayState !== 'tentative' || !activeApplication) {
+      return title;
+    }
+    var preferredCode = Config.getEffectivePreferredShiftCode(activeApplication);
+    return title + Config.getPreferredShiftCalendarSuffix(slot.shiftType, preferredCode);
+  }
+
+  function buildShortTitle(slot, displayState, applicantName, activeApplication) {
     var shift = Config.getShiftTypeLabel(slot.shiftType);
     var title;
     switch (displayState) {
@@ -105,19 +117,30 @@ var SlotService = (function () {
       default:
         title = shift;
     }
+    title = appendPreferredShiftSuffix(title, slot, activeApplication, displayState);
     return appendNurseConditionSuffix(title, slot);
   }
 
-  function buildLongTitle(slot, displayState, applicantName) {
-    return buildShortTitle(slot, displayState, applicantName);
+  function buildLongTitle(slot, displayState, applicantName, activeApplication) {
+    return buildShortTitle(slot, displayState, applicantName, activeApplication);
   }
 
   function slotToEvent(slot, applicationsBySlot) {
     var applications = getSlotApplications(slot.slotId, applicationsBySlot);
     var displayInfo = getSlotDisplayInfo(slot, applications);
     var colors = SLOT_COLORS[displayInfo.displayState];
-    var shortTitle = buildShortTitle(slot, displayInfo.displayState, displayInfo.applicantName);
-    var longTitle = buildLongTitle(slot, displayInfo.displayState, displayInfo.applicantName);
+    var shortTitle = buildShortTitle(
+      slot,
+      displayInfo.displayState,
+      displayInfo.applicantName,
+      displayInfo.activeApplication
+    );
+    var longTitle = buildLongTitle(
+      slot,
+      displayInfo.displayState,
+      displayInfo.applicantName,
+      displayInfo.activeApplication
+    );
     var remaining = Utils.remainingCount(
       slot.requiredCount,
       slot.tentativeCount,
@@ -138,6 +161,7 @@ var SlotService = (function () {
         targetFacility: slot.targetFacility,
         applicableFacilities: slot.applicableFacilities,
         shiftType: Config.getShiftTypeLabel(slot.shiftType),
+        shiftTypeStaffLabel: Config.getShiftTypeStaffLabel(slot.shiftType),
         jobCondition: slot.jobCondition,
         requiredCount: slot.requiredCount,
         tentativeCount: slot.tentativeCount,
@@ -173,6 +197,26 @@ var SlotService = (function () {
     return slots.map(function (slot) {
       return slotToEvent(slot, applicationsBySlot);
     });
+  }
+
+  function createRemainderHalfDaySlot(sourceSlot, remainderShiftCode) {
+    var now = Utils.now();
+    var remainderSlot = {
+      slotId: Utils.generateId(),
+      workDate: sourceSlot.workDate,
+      targetFacility: sourceSlot.targetFacility,
+      applicableFacilities: sourceSlot.applicableFacilities,
+      shiftType: Config.getShiftTypeLabel(remainderShiftCode),
+      jobCondition: sourceSlot.jobCondition,
+      requiredCount: SLOT_REQUIRED_COUNT,
+      tentativeCount: 0,
+      approvedCount: 0,
+      slotStatus: Config.SLOT_STATUS.OPEN,
+      createdAt: now,
+      updatedAt: now
+    };
+    SheetRepository.appendSlot(remainderSlot);
+    return remainderSlot;
   }
 
   function createSlot(facilityCode, workDateStr, shiftLabel, jobCondition) {
@@ -230,6 +274,7 @@ var SlotService = (function () {
       return Utils.failure('募集枠が見つかりません。');
     }
     var applications = SheetRepository.getApplicationsBySlotId(slotId).map(function (app) {
+      var preferredCode = Config.getEffectivePreferredShiftCode(app);
       return {
         applicationId: app.applicationId,
         name: app.name,
@@ -237,6 +282,11 @@ var SlotService = (function () {
         jobType: Config.getJobTypeLabel(app.jobType),
         workDate: Utils.formatDate(app.workDate),
         shiftType: Config.getShiftTypeLabel(app.shiftType),
+        shiftTypeStaffLabel: Config.getShiftTypeStaffLabel(app.shiftType),
+        preferredShiftType: preferredCode,
+        preferredShiftDisplay: Config.getShiftTypeStaffLabel(preferredCode),
+        remarks: app.remarks || '',
+        remarksDisplay: app.remarks ? app.remarks : 'なし',
         workFacility: app.workFacility,
         status: app.status,
         appliedAt: Utils.formatDateTime(app.appliedAt),
@@ -303,6 +353,7 @@ var SlotService = (function () {
   return {
     getSlotsForAdmin: getSlotsForAdmin,
     createSlot: createSlot,
+    createRemainderHalfDaySlot: createRemainderHalfDaySlot,
     getSlotDetail: getSlotDetail,
     deleteSlot: deleteSlot,
     slotToEvent: slotToEvent

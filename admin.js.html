@@ -51,7 +51,7 @@
     });
     updateFacilityLabel();
     if (calendar) {
-      calendar.refetchEvents();
+      refreshCalendar();
     }
   }
 
@@ -96,7 +96,10 @@
       },
       height: 'auto',
       selectable: false,
-      events: fetchEvents,
+      eventSources: [{
+        id: 'admin-slots',
+        events: fetchEvents
+      }],
       eventContent: renderEventContent,
       eventDidMount: applyEventColors,
       dateClick: function (info) {
@@ -174,6 +177,19 @@
       .apiGetAdminCalendarEvents(currentFacility, info.startStr, info.endStr);
   }
 
+  /**
+   * カレンダーを最新状態へ再取得する。
+   * removeAllEvents で表示中イベントをクリアしてから refetch し、
+   * 承認後の半日枠自動生成などを確実に反映する。
+   */
+  function refreshCalendar() {
+    if (!calendar) {
+      return Promise.resolve();
+    }
+    calendar.removeAllEvents();
+    return calendar.refetchEvents();
+  }
+
   function openCreateModal(dateStr) {
     document.getElementById('createWorkDate').value = dateStr;
     document.getElementById('createModal').hidden = false;
@@ -189,8 +205,9 @@
       .withSuccessHandler(function (result) {
         if (result.success) {
           closeModal('createModal');
-          calendar.refetchEvents();
-          showToast('募集枠を作成しました', 'success');
+          refreshCalendar().then(function () {
+            showToast('募集枠を作成しました', 'success');
+          });
         } else {
           showError(result.message);
         }
@@ -221,7 +238,7 @@
     info.innerHTML =
       '<p><strong>勤務日：</strong>' + escapeHtml(slot.workDate) + '</p>' +
       '<p><strong>勤務先：</strong>' + escapeHtml(slot.targetFacility) + '</p>' +
-      '<p><strong>勤務区分：</strong>' + escapeHtml(slot.shiftType) + '</p>' +
+      '<p><strong>募集勤務区分：</strong>' + escapeHtml(slot.shiftTypeStaffLabel || slot.shiftType) + '</p>' +
       '<p><strong>職種条件：</strong>' + escapeHtml(slot.jobCondition) + '</p>' +
       '<p><strong>状態：</strong>' + escapeHtml(stateLabel) + '</p>';
 
@@ -267,8 +284,9 @@
         if (result.success) {
           currentSlotId = null;
           closeModal('detailModal');
-          calendar.refetchEvents();
-          showToast('募集枠を削除しました', 'success');
+          refreshCalendar().then(function () {
+            showToast('募集枠を削除しました', 'success');
+          });
         } else {
           btn.disabled = false;
           showError(result.message);
@@ -313,7 +331,13 @@
         '<button type="button" class="btn btn-warning btn-sm" data-action="reject" data-id="' + app.applicationId + '">否認</button>' +
         '<button type="button" class="btn btn-danger btn-sm" data-action="delete" data-id="' + app.applicationId + '">削除</button>' +
         '</div>';
-    } else if (showActions && (app.status === '承認済' || app.status === '否認')) {
+    } else if (showActions && app.status === '承認済') {
+      actions =
+        '<div class="app-card-actions">' +
+        '<button type="button" class="btn btn-warning btn-sm" data-action="cancel" data-id="' + app.applicationId + '">勤務をキャンセル</button>' +
+        '<button type="button" class="btn btn-danger btn-sm" data-action="delete" data-id="' + app.applicationId + '">削除</button>' +
+        '</div>';
+    } else if (showActions && app.status === '否認') {
       actions =
         '<div class="app-card-actions">' +
         '<button type="button" class="btn btn-danger btn-sm" data-action="delete" data-id="' + app.applicationId + '">削除</button>' +
@@ -324,6 +348,9 @@
         (app.status === '承認待ち'
           ? '<button type="button" class="btn btn-success btn-sm" data-action="approve" data-id="' + app.applicationId + '">承認</button>' +
             '<button type="button" class="btn btn-warning btn-sm" data-action="reject" data-id="' + app.applicationId + '">否認</button>'
+          : '') +
+        (app.status === '承認済'
+          ? '<button type="button" class="btn btn-warning btn-sm" data-action="cancel" data-id="' + app.applicationId + '">勤務をキャンセル</button>'
           : '') +
         '<button type="button" class="btn btn-danger btn-sm" data-action="delete" data-id="' + app.applicationId + '">削除</button>' +
         '</div>';
@@ -336,7 +363,16 @@
       '<span class="status-badge ' + statusClass + '">' + escapeHtml(app.status) + '</span>' +
       '</div>' +
       '<p>所属：' + escapeHtml(app.homeFacility) + '　職種：' + escapeHtml(app.jobType) + '</p>' +
-      '<p>勤務日：' + escapeHtml(app.workDate) + ' ' + escapeHtml(app.shiftType) + ' → ' + escapeHtml(app.workFacility) + '</p>' +
+      (app.shiftTypeStaffLabel
+        ? '<p>募集勤務区分：' + escapeHtml(app.shiftTypeStaffLabel) + '</p>'
+        : '<p>勤務日：' + escapeHtml(app.workDate) + ' ' + escapeHtml(app.shiftType) + ' → ' + escapeHtml(app.workFacility) + '</p>') +
+      (app.preferredShiftDisplay
+        ? '<p>希望勤務区分：' + escapeHtml(app.preferredShiftDisplay) + '</p>'
+        : '') +
+      '<p>備考：' + escapeHtml(app.remarksDisplay || 'なし') + '</p>' +
+      (app.shiftTypeStaffLabel
+        ? '<p>勤務日：' + escapeHtml(app.workDate) + ' → ' + escapeHtml(app.workFacility) + '</p>'
+        : '') +
       '<p>応募日時：' + escapeHtml(app.appliedAt) + '</p>' +
       actions +
       '</div>'
@@ -348,6 +384,13 @@
       btn.addEventListener('click', function () {
         var action = btn.dataset.action;
         var id = btn.dataset.id;
+
+        if (action === 'cancel') {
+          if (!confirm('この勤務をキャンセルし、募集枠を再開しますか？')) {
+            return;
+          }
+        }
+
         var approver = prompt('操作者名（任意）', '管理者');
         if (approver === null) return;
 
@@ -355,17 +398,25 @@
           ? 'apiApproveApplication'
           : action === 'reject'
             ? 'apiRejectApplication'
-            : 'apiDeleteApplication';
+            : action === 'cancel'
+              ? 'apiCancelApprovedApplication'
+              : 'apiDeleteApplication';
 
         google.script.run
           .withSuccessHandler(function (result) {
             if (result.success) {
               showToast('処理が完了しました', 'success');
-              calendar.refetchEvents();
-              if (currentSlotId) openDetailModal(currentSlotId);
-              if (!document.getElementById('allApplicationsModal').hidden) {
-                showAllApplications();
-              }
+              var slotIdForDetail = currentSlotId;
+              var shouldRefreshAllApps = !document.getElementById('allApplicationsModal').hidden;
+
+              refreshCalendar().then(function () {
+                if (slotIdForDetail) {
+                  openDetailModal(slotIdForDetail);
+                }
+                if (shouldRefreshAllApps) {
+                  showAllApplications();
+                }
+              });
             } else {
               showError(result.message);
             }
@@ -390,6 +441,7 @@
     switch (status) {
       case '承認待ち': return 'status-pending';
       case '承認済': return 'status-approved';
+      case 'キャンセル済み': return 'status-rejected';
       case '否認': return 'status-rejected';
       default: return 'status-deleted';
     }

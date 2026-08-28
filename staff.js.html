@@ -4,6 +4,12 @@
   var initData = null;
   var slotsData = [];
 
+  var PREFERRED_SHIFT_OPTIONS = [
+    { code: 'FULLDAY', label: '募集どおり終日勤務（8:30-17:30）' },
+    { code: 'AM', label: '午前のみ希望（8:30-12:30）' },
+    { code: 'PM', label: '午後のみ希望（13:30-17:30）' }
+  ];
+
   document.addEventListener('DOMContentLoaded', function () {
     facilityCode = typeof STAFF_FACILITY_CODE !== 'undefined' ? STAFF_FACILITY_CODE : '';
 
@@ -35,6 +41,7 @@
     initData = result.data;
     document.getElementById('facilityName').textContent = initData.facilityName;
     populateJobTypes();
+    populatePreferredShiftOptions();
     loadSlots();
   }
 
@@ -47,6 +54,22 @@
       opt.textContent = jt.label;
       select.appendChild(opt);
     });
+  }
+
+  function populatePreferredShiftOptions() {
+    var select = document.getElementById('applyPreferredShift');
+    select.innerHTML = '';
+    PREFERRED_SHIFT_OPTIONS.forEach(function (option) {
+      var opt = document.createElement('option');
+      opt.value = option.code;
+      opt.textContent = option.label;
+      select.appendChild(opt);
+    });
+    select.value = 'FULLDAY';
+  }
+
+  function isFullDaySlot(slot) {
+    return slot && slot.shiftCode === 'FULLDAY';
   }
 
   function loadSlots() {
@@ -142,6 +165,10 @@
     );
   }
 
+  function isValidEmail(email) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').trim());
+  }
+
   function openApplyModal(slotId) {
     var slot = slotsData.find(function (s) {
       return s.slotId === slotId;
@@ -157,6 +184,20 @@
 
     document.getElementById('applyName').value = '';
     document.getElementById('applyJobType').value = '';
+    document.getElementById('applyEmail').value = '';
+    document.getElementById('applyRemarks').value = '';
+
+    var preferredGroup = document.getElementById('preferredShiftGroup');
+    var preferredSelect = document.getElementById('applyPreferredShift');
+    if (isFullDaySlot(slot)) {
+      populatePreferredShiftOptions();
+      preferredGroup.hidden = false;
+      preferredSelect.value = 'FULLDAY';
+    } else {
+      preferredGroup.hidden = true;
+      preferredSelect.value = '';
+    }
+
     document.getElementById('applyModal').hidden = false;
   }
 
@@ -169,6 +210,8 @@
     var slotId = document.getElementById('applySlotId').value;
     var name = document.getElementById('applyName').value.trim();
     var jobType = document.getElementById('applyJobType').value;
+    var email = document.getElementById('applyEmail').value.trim();
+    var remarks = document.getElementById('applyRemarks').value.trim();
 
     if (!name) {
       alert('氏名を入力してください');
@@ -177,6 +220,32 @@
     if (!jobType) {
       alert('職種を選択してください');
       return;
+    }
+    if (!email) {
+      alert('メールアドレスを入力してください');
+      return;
+    }
+    if (!isValidEmail(email)) {
+      alert('メールアドレスの形式が正しくありません');
+      return;
+    }
+
+    var slot = slotsData.find(function (s) {
+      return s.slotId === slotId;
+    });
+    var preferredShiftType = '';
+    if (slot) {
+      if (isFullDaySlot(slot)) {
+        preferredShiftType = document.getElementById('applyPreferredShift').value;
+        if (!preferredShiftType) {
+          alert('希望する勤務時間を選択してください');
+          return;
+        }
+      } else if (slot.shiftCode === 'AM') {
+        preferredShiftType = 'AM';
+      } else if (slot.shiftCode === 'PM') {
+        preferredShiftType = 'PM';
+      }
     }
 
     var submitBtn = e.target.querySelector('[type="submit"]');
@@ -200,7 +269,7 @@
         submitBtn.textContent = '応募する';
         alert(err.message || '応募に失敗しました');
       })
-      .apiSubmitApplication(facilityCode, slotId, name, jobType);
+      .apiSubmitApplication(facilityCode, slotId, name, jobType, preferredShiftType, remarks, email);
   }
 
   function onSuccessClose() {
