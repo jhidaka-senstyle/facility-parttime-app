@@ -4,6 +4,16 @@
   var initData = null;
   var calendar = null;
   var currentSlotId = null;
+  var calendarEl = null;
+  var viewMode = 'month';
+  var cardAnchorDate = null;
+  var cachedEvents = [];
+  var WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
+  var SHIFT_SORT_ORDER = {
+    '終日勤務': 1,
+    '午前のみ': 2,
+    '午後のみ': 3
+  };
 
   document.addEventListener('DOMContentLoaded', init);
 
@@ -46,6 +56,7 @@
 
   function switchFacility(code) {
     currentFacility = code;
+    cachedEvents = [];
     document.querySelectorAll('.facility-tab').forEach(function (btn) {
       btn.classList.toggle('active', btn.dataset.code === code);
     });
@@ -85,14 +96,28 @@
   }
 
   function initCalendar() {
-    var calendarEl = document.getElementById('calendar');
+    calendarEl = document.getElementById('calendar');
     calendar = new FullCalendar.Calendar(calendarEl, {
       locale: 'ja',
       initialView: 'dayGridMonth',
       headerToolbar: {
         left: 'prev,next today',
         center: 'title',
-        right: 'dayGridMonth,timeGridWeek,timeGridDay'
+        right: 'dayGridMonth,cardWeek,cardDay'
+      },
+      customButtons: {
+        cardWeek: {
+          text: 'week',
+          click: function () {
+            setViewMode('week');
+          }
+        },
+        cardDay: {
+          text: 'day',
+          click: function () {
+            setViewMode('day');
+          }
+        }
       },
       height: 'auto',
       selectable: false,
@@ -103,13 +128,351 @@
       eventContent: renderEventContent,
       eventDidMount: applyEventColors,
       dateClick: function (info) {
+        if (viewMode !== 'month') return;
         openCreateModal(info.dateStr);
       },
       eventClick: function (info) {
+        if (viewMode !== 'month') return;
         openDetailModal(info.event.extendedProps.slotId);
+      },
+      datesSet: function (info) {
+        if (viewMode === 'month') {
+          cardAnchorDate = startOfDay(info.view.currentStart);
+        }
       }
     });
     calendar.render();
+    bindCardViewNavigation();
+    bindMonthViewButton();
+  }
+
+  function bindMonthViewButton() {
+    var monthBtn = calendarEl.querySelector('.fc-dayGridMonth-button');
+    if (monthBtn) {
+      monthBtn.addEventListener('click', function () {
+        setViewMode('month');
+      });
+    }
+  }
+
+  function bindCardViewNavigation() {
+    calendarEl.addEventListener('click', function (e) {
+      if (viewMode === 'month') return;
+      var btn = e.target.closest('.fc-prev-button, .fc-next-button, .fc-today-button');
+      if (!btn) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (btn.classList.contains('fc-prev-button')) {
+        navigateCardView(-1);
+      } else if (btn.classList.contains('fc-next-button')) {
+        navigateCardView(1);
+      } else if (btn.classList.contains('fc-today-button')) {
+        cardAnchorDate = startOfDay(new Date());
+        loadAndRenderCardView();
+      }
+    }, true);
+  }
+
+  function setViewMode(mode) {
+    viewMode = mode;
+    var panel = document.getElementById('cardCalendarPanel');
+    var harness = calendarEl.querySelector('.fc-view-harness');
+
+    if (mode === 'month') {
+      panel.hidden = true;
+      if (harness) harness.style.display = '';
+      calendar.changeView('dayGridMonth');
+    } else {
+      cardAnchorDate = startOfDay(calendar.getDate());
+      if (harness) harness.style.display = 'none';
+      panel.hidden = false;
+      loadAndRenderCardView();
+    }
+    updateViewButtonStates();
+  }
+
+  function updateViewButtonStates() {
+    var monthBtn = calendarEl.querySelector('.fc-dayGridMonth-button');
+    var weekBtn = calendarEl.querySelector('.fc-cardWeek-button');
+    var dayBtn = calendarEl.querySelector('.fc-cardDay-button');
+    [monthBtn, weekBtn, dayBtn].forEach(function (btn) {
+      if (btn) btn.classList.remove('fc-button-active');
+    });
+    if (viewMode === 'month' && monthBtn) {
+      monthBtn.classList.add('fc-button-active');
+    } else if (viewMode === 'week' && weekBtn) {
+      weekBtn.classList.add('fc-button-active');
+    } else if (viewMode === 'day' && dayBtn) {
+      dayBtn.classList.add('fc-button-active');
+    }
+  }
+
+  function navigateCardView(delta) {
+    if (!cardAnchorDate) {
+      cardAnchorDate = startOfDay(new Date());
+    }
+    if (viewMode === 'week') {
+      cardAnchorDate.setDate(cardAnchorDate.getDate() + delta * 7);
+    } else if (viewMode === 'day') {
+      cardAnchorDate.setDate(cardAnchorDate.getDate() + delta);
+    }
+    loadAndRenderCardView();
+  }
+
+  function loadAndRenderCardView() {
+    var range = getCardViewRange();
+    ensureEventsForRange(range.start, range.end, function () {
+      renderCardView();
+      updateCardToolbarTitle();
+    });
+  }
+
+  function getCardViewRange() {
+    if (viewMode === 'day') {
+      var dayStart = startOfDay(cardAnchorDate);
+      var dayEnd = new Date(dayStart);
+      dayEnd.setDate(dayStart.getDate() + 1);
+      return { start: dayStart, end: dayEnd };
+    }
+    var weekStart = getWeekStart(cardAnchorDate);
+    var weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekStart.getDate() + 7);
+    return { start: weekStart, end: weekEnd };
+  }
+
+  function ensureEventsForRange(startDate, endDate, callback) {
+    var startStr = toDateKey(startDate);
+    var endStr = toDateKey(endDate);
+    if (isRangeCovered(startStr, endStr)) {
+      callback();
+      return;
+    }
+    google.script.run
+      .withSuccessHandler(function (result) {
+        if (result.success) {
+          mergeCachedEvents(result.data);
+          markRangeCached(startStr, endStr);
+          callback();
+        } else {
+          showError(result.message);
+        }
+      })
+      .withFailureHandler(showError)
+      .apiGetAdminCalendarEvents(currentFacility, startStr, endStr);
+  }
+
+  var cachedRanges = [];
+
+  function isRangeCovered(startStr, endStr) {
+    return cachedRanges.some(function (range) {
+      return range.start <= startStr && range.end >= endStr;
+    });
+  }
+
+  function markRangeCached(startStr, endStr) {
+    cachedRanges.push({ start: startStr, end: endStr });
+  }
+
+  function mergeCachedEvents(events) {
+    events.forEach(function (ev) {
+      var idx = cachedEvents.findIndex(function (item) {
+        return item.id === ev.id;
+      });
+      if (idx >= 0) {
+        cachedEvents[idx] = ev;
+      } else {
+        cachedEvents.push(ev);
+      }
+    });
+  }
+
+  function getEventsForDate(date) {
+    var key = toDateKey(date);
+    return cachedEvents.filter(function (ev) {
+      return getEventDateKey(ev) === key;
+    }).sort(compareEventsByShift);
+  }
+
+  function getEventDateKey(event) {
+    if (typeof event.start === 'string') {
+      return event.start.substring(0, 10);
+    }
+    if (event.start instanceof Date) {
+      return toDateKey(event.start);
+    }
+    return String(event.start || '').substring(0, 10);
+  }
+
+  function compareEventsByShift(a, b) {
+    var orderA = SHIFT_SORT_ORDER[(a.extendedProps && a.extendedProps.shiftType) || ''] || 99;
+    var orderB = SHIFT_SORT_ORDER[(b.extendedProps && b.extendedProps.shiftType) || ''] || 99;
+    if (orderA !== orderB) return orderA - orderB;
+    return String(a.id).localeCompare(String(b.id));
+  }
+
+  function renderCardView() {
+    var panel = document.getElementById('cardCalendarPanel');
+    if (viewMode === 'week') {
+      panel.innerHTML = renderWeekCardView();
+    } else if (viewMode === 'day') {
+      panel.innerHTML = renderDayCardView();
+    }
+    bindCardClicks(panel);
+  }
+
+  function renderWeekCardView() {
+    var weekStart = getWeekStart(cardAnchorDate);
+    var todayKey = toDateKey(new Date());
+    var html = '<div class="card-calendar-week">';
+
+    for (var i = 0; i < 7; i++) {
+      var day = new Date(weekStart);
+      day.setDate(weekStart.getDate() + i);
+      var dayKey = toDateKey(day);
+      var events = getEventsForDate(day);
+      var isToday = dayKey === todayKey;
+
+      html += '<div class="card-calendar-column">';
+      html += '<div class="card-calendar-column-header' + (isToday ? ' is-today' : '') + '">' +
+        escapeHtml(formatShortDate(day)) + '</div>';
+      html += '<div class="card-calendar-column-body">';
+      if (events.length) {
+        html += events.map(renderSlotCard).join('');
+      } else {
+        html += '<div class="card-calendar-empty">—</div>';
+      }
+      html += '</div></div>';
+    }
+
+    html += '</div>';
+    return html;
+  }
+
+  function renderDayCardView() {
+    var day = startOfDay(cardAnchorDate);
+    var todayKey = toDateKey(new Date());
+    var isToday = toDateKey(day) === todayKey;
+    var events = getEventsForDate(day);
+    var html = '<div class="card-calendar-day">';
+    html += '<div class="card-calendar-day-header' + (isToday ? ' is-today' : '') + '">' +
+      escapeHtml(formatDayTitle(day)) + '</div>';
+    html += '<div class="card-calendar-day-body">';
+
+    if (events.length) {
+      html += events.map(renderSlotCard).join('');
+    } else {
+      html += '<div class="card-calendar-empty">この日の募集・勤務はありません</div>';
+    }
+
+    html += '</div></div>';
+    return html;
+  }
+
+  function renderSlotCard(event) {
+    var props = event.extendedProps || {};
+    var state = props.displayState || 'available';
+    var lines = [];
+    var preferred = extractPreferredShiftDisplay(props);
+
+    lines.push('<div class="slot-card-shift">' + escapeHtml(props.shiftType || '') + '</div>');
+
+    if (state === 'approved') {
+      if (props.applicantName) {
+        lines.push('<div class="slot-card-name">' + escapeHtml(props.applicantName) + '</div>');
+      }
+      lines.push('<div class="slot-card-status">承認済</div>');
+    } else if (state === 'tentative') {
+      lines.push('<div class="slot-card-status">仮押さえ ' + escapeHtml(props.applicantName || '') + '</div>');
+      if (preferred) {
+        lines.push('<div class="slot-card-preferred">' + escapeHtml(preferred) + '</div>');
+      }
+    } else if (state === 'available') {
+      lines.push('<div class="slot-card-status">募集中</div>');
+      if (props.jobCondition === '看護師') {
+        lines.push('<div class="slot-card-tag">看護師</div>');
+      }
+    } else if (state === 'inactive') {
+      lines.push('<div class="slot-card-status">停止</div>');
+    }
+
+    return (
+      '<button type="button" class="slot-card slot-card-' + escapeHtml(state) + '" ' +
+      'data-slot-id="' + escapeHtml(props.slotId || event.id) + '">' +
+      lines.join('') +
+      '</button>'
+    );
+  }
+
+  function extractPreferredShiftDisplay(props) {
+    var title = props.shortTitle || props.longTitle || '';
+    if (title.indexOf('午前希望') !== -1) return '希望：午前のみ';
+    if (title.indexOf('午後希望') !== -1) return '希望：午後のみ';
+    return '';
+  }
+
+  function bindCardClicks(container) {
+    container.querySelectorAll('.slot-card[data-slot-id]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        openDetailModal(btn.dataset.slotId);
+      });
+    });
+  }
+
+  function updateCardToolbarTitle() {
+    var titleEl = calendarEl.querySelector('.fc-toolbar-title');
+    if (!titleEl || viewMode === 'month') return;
+
+    if (viewMode === 'week') {
+      var weekStart = getWeekStart(cardAnchorDate);
+      var weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekStart.getDate() + 6);
+      titleEl.textContent = formatWeekRangeTitle(weekStart, weekEnd);
+    } else if (viewMode === 'day') {
+      titleEl.textContent = formatDayTitle(startOfDay(cardAnchorDate));
+    }
+  }
+
+  function startOfDay(date) {
+    var d = new Date(date);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+
+  function getWeekStart(date) {
+    var d = startOfDay(date);
+    var day = d.getDay();
+    var diff = day === 0 ? -6 : 1 - day;
+    d.setDate(d.getDate() + diff);
+    return d;
+  }
+
+  function toDateKey(date) {
+    var y = date.getFullYear();
+    var m = String(date.getMonth() + 1).padStart(2, '0');
+    var d = String(date.getDate()).padStart(2, '0');
+    return y + '-' + m + '-' + d;
+  }
+
+  function formatShortDate(date) {
+    return (date.getMonth() + 1) + '/' + date.getDate() + '(' + WEEKDAYS[date.getDay()] + ')';
+  }
+
+  function formatDayTitle(date) {
+    return date.getFullYear() + '年' + (date.getMonth() + 1) + '月' + date.getDate() +
+      '日（' + WEEKDAYS[date.getDay()] + '）';
+  }
+
+  function formatWeekRangeTitle(start, end) {
+    var startText = start.getFullYear() + '年' + (start.getMonth() + 1) + '月' + start.getDate() + '日';
+    var endText;
+    if (start.getFullYear() === end.getFullYear() && start.getMonth() === end.getMonth()) {
+      endText = end.getDate() + '日';
+    } else if (start.getFullYear() === end.getFullYear()) {
+      endText = (end.getMonth() + 1) + '月' + end.getDate() + '日';
+    } else {
+      endText = end.getFullYear() + '年' + (end.getMonth() + 1) + '月' + end.getDate() + '日';
+    }
+    return startText + ' - ' + endText;
   }
 
   function applyEventColors(info) {
@@ -164,7 +527,13 @@
     google.script.run
       .withSuccessHandler(function (result) {
         if (result.success) {
+          mergeCachedEvents(result.data);
+          markRangeCached(info.startStr.substring(0, 10), info.endStr.substring(0, 10));
           successCallback(result.data);
+          if (viewMode !== 'month') {
+            renderCardView();
+            updateCardToolbarTitle();
+          }
         } else {
           failureCallback(new Error(result.message));
           showError(result.message);
@@ -186,8 +555,14 @@
     if (!calendar) {
       return Promise.resolve();
     }
+    cachedEvents = [];
+    cachedRanges = [];
     calendar.removeAllEvents();
-    return calendar.refetchEvents();
+    return calendar.refetchEvents().then(function () {
+      if (viewMode !== 'month') {
+        loadAndRenderCardView();
+      }
+    });
   }
 
   function openCreateModal(dateStr) {

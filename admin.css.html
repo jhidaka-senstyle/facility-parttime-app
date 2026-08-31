@@ -397,6 +397,148 @@
   .toast.error { background: #ea4335; }
   .toast.success { background: #34a853; }
 
+  /* week/day カードビュー */
+  .card-calendar-panel {
+    background: #fff;
+    border-radius: 8px;
+    padding: 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+
+  .card-calendar-panel[hidden] { display: none; }
+
+  .card-calendar-week {
+    display: flex;
+    gap: 12px;
+    overflow-x: auto;
+    padding-bottom: 8px;
+  }
+
+  .card-calendar-column {
+    flex: 0 0 160px;
+    min-width: 160px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .card-calendar-column-header {
+    text-align: center;
+    font-size: 14px;
+    font-weight: 500;
+    padding: 8px 4px;
+    margin-bottom: 8px;
+    border-bottom: 2px solid #dadce0;
+    color: #202124;
+  }
+
+  .card-calendar-column-header.is-today {
+    background: #e8f0fe;
+    border-radius: 4px 4px 0 0;
+    border-bottom-color: #1a73e8;
+    color: #1a73e8;
+  }
+
+  .card-calendar-column-body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-height: 80px;
+  }
+
+  .card-calendar-day {
+    max-width: 480px;
+    margin: 0 auto;
+  }
+
+  .card-calendar-day-header {
+    font-size: 18px;
+    font-weight: 500;
+    text-align: center;
+    padding: 8px 0 16px;
+    border-bottom: 2px solid #dadce0;
+    margin-bottom: 16px;
+  }
+
+  .card-calendar-day-header.is-today {
+    color: #1a73e8;
+    border-bottom-color: #1a73e8;
+  }
+
+  .card-calendar-day-body {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .card-calendar-empty {
+    font-size: 12px;
+    color: #9aa0a6;
+    text-align: center;
+    padding: 12px 4px;
+  }
+
+  .slot-card {
+    display: block;
+    width: 100%;
+    text-align: left;
+    border-radius: 6px;
+    border: 1px solid #dadce0;
+    padding: 10px;
+    cursor: pointer;
+    font-size: 13px;
+    line-height: 1.45;
+    transition: box-shadow 0.15s;
+    background: #fff;
+  }
+
+  .slot-card:hover {
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+  }
+
+  .slot-card-shift {
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+
+  .slot-card-name {
+    font-weight: 500;
+  }
+
+  .slot-card-status,
+  .slot-card-preferred,
+  .slot-card-tag {
+    font-size: 12px;
+  }
+
+  .slot-card-available {
+    background: #e8f0fe;
+    border-color: #1a73e8;
+    color: #1557b0;
+  }
+
+  .slot-card-tentative {
+    background: #fef7e0;
+    border-color: #e37400;
+    color: #b06000;
+  }
+
+  .slot-card-approved {
+    background: #dff3e4;
+    border-color: #4caf50;
+    color: #1b5e20;
+  }
+
+  .slot-card-inactive {
+    background: #f1f3f4;
+    border-color: #9aa0a6;
+    color: #5f6368;
+  }
+
+  .slot-card-tag {
+    margin-top: 2px;
+    font-weight: 500;
+  }
+
   @media (max-width: 768px) {
     .app-header { padding: 12px 16px; }
     .app-main { padding: 12px 16px; }
