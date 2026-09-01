@@ -490,6 +490,9 @@ var ApplicationService = (function () {
       ChatNotify.notifyNewApplication(application);
       MailNotify.sendApplicationReceived(application);
 
+      SpreadsheetApp.flush();
+      OfficeManagerListService.refreshOfficeManagerListSafe();
+
       return Utils.success({
         applicationId: application.applicationId,
         message: '応募を受け付けました。管理者の承認をお待ちください。'
@@ -562,6 +565,7 @@ var ApplicationService = (function () {
 
       SpreadsheetApp.flush();
       OfficeListService.refreshOfficeListSafe();
+      OfficeManagerListService.refreshOfficeManagerListSafe();
 
       return Utils.success({ applicationId: app.applicationId });
     } catch (e) {
@@ -615,6 +619,7 @@ var ApplicationService = (function () {
 
       SpreadsheetApp.flush();
       OfficeListService.refreshOfficeListSafe();
+      OfficeManagerListService.refreshOfficeManagerListSafe();
 
       ChatNotify.notifyCancelled(app, confirmedShiftCode);
       MailNotify.sendApplicationCancelled(app, confirmedShiftCode);
@@ -665,6 +670,7 @@ var ApplicationService = (function () {
       ChatNotify.notifyRejected(app);
 
       OfficeListService.refreshOfficeListSafe();
+      OfficeManagerListService.refreshOfficeManagerListSafe();
 
       return Utils.success({ applicationId: app.applicationId });
     } catch (e) {
@@ -719,6 +725,7 @@ var ApplicationService = (function () {
       ChatNotify.notifyDeleted(app);
 
       OfficeListService.refreshOfficeListSafe();
+      OfficeManagerListService.refreshOfficeManagerListSafe();
 
       return Utils.success({ applicationId: app.applicationId });
     } catch (e) {
